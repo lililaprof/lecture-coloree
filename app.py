@@ -39,50 +39,52 @@ MOTS_OUTILS_BASE = [
     'mon', 'ma', 'mes', 'ton', 'ta', 'tes', 'son', 'sa', 'ses'
 ]
 
-# Polices disponibles (Belle Allure doit être installée sur le PC de l'utilisateur)
+# Polices disponibles
 POLICES = [
-    {'nom': 'OpenDyslexic', 'affichage': 'OpenDyslexic'},
-    {'nom': 'Belle Allure', 'affichage': 'Belle Allure'},
-    {'nom': 'Arial', 'affichage': 'Arial'},
-    {'nom': 'Comic Sans MS', 'affichage': 'Comic Sans MS'},
-    {'nom': 'Helvetica', 'affichage': 'Helvetica'}
+    {'nom': 'Arial', 'affichage': '<span style="font-family:Arial">Arial</span>'},
+    {'nom': 'Comic Sans MS', 'affichage': '<span style="font-family:Comic Sans MS">Comic Sans MS</span>'},
+    {'nom': 'Helvetica', 'affichage': '<span style="font-family:Helvetica">Helvetica</span>'},
+    {'nom': 'OpenDyslexic', 'affichage': '<span style="font-family:OpenDyslexic">OpenDyslexic</span>'},
+    {'nom': 'Belle Allure', 'affichage': '<span style="font-family:Belle Allure">Belle Allure</span>'}
 ]
 
 # Palettes daltoniennes
 PALETTES = {
     "Standard": {
-        'voyelles': "#FF0000",
-        'consonnes': "#0000FF",
-        'graphemes': "#008000",
-        'muettes': "#808080",
-        'mots_outils': "#8B4513"
+        'voyelles': "#FF0000",  # Rouge
+        'consonnes': "#0000FF",  # Bleu
+        'graphemes': "#008000",  # Vert
+        'muettes': "#808080",    # Gris
+        'mots_outils': "#8B4513" # Marron
     },
     "Daltonien (Deutan)": {
-        'voyelles': "#0072B2",
-        'consonnes': "#D55E00",
-        'graphemes': "#009E73",
-        'muettes': "#CC79A7",
-        'mots_outils': "#E69F00"
+        'voyelles': "#0072B2",  # Bleu
+        'consonnes': "#D55E00",  # Orange
+        'graphemes': "#009E73",  # Vert
+        'muettes': "#CC79A7",    # Rose
+        'mots_outils': "#E69F00" # Jaune
     },
     "Daltonien (Protan)": {
         'voyelles': "#0072B2",
         'consonnes': "#CC79A7",
         'graphemes': "#009E73",
-        'muettes': "#F0E442",
+        'muettes': "#F0E442",    # Jaune
         'mots_outils': "#E69F00"
     },
     "Daltonien (Tritan)": {
         'voyelles': "#0072B2",
         'consonnes': "#E69F00",
-        'graphemes': "#56B4E9",
-        'muettes': "#009E73",
+        'graphemes': "#56B4E9",  # Bleu clair
+        'muettes': "#009E73",    # Vert
         'mots_outils': "#F0E442"
     }
 }
 
 def hex_to_rgb(hex_color):
+    """Convertit une couleur hex en RGBColor (corrigé)"""
     hex_color = hex_color.lstrip('#')
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    return RGBColor(r, g, b)
 
 def detecter_lettre_muette(mot, position):
     if position == len(mot) - 1:
@@ -222,9 +224,10 @@ def colorier_graphemes_cibles(texte, graphemes, couleur):
 def creer_word(texte, police, couleurs_config, type_doc, graphemes_cibles=None, couleur_graphemes="#069494"):
     doc = Document()
     couleurs_rgb = {}
+
+    # Conversion des couleurs
     for key, hex_val in couleurs_config.items():
-        r, g, b = hex_to_rgb(hex_val)
-        couleurs_rgb[key] = RGBColor(r, g, b)
+        couleurs_rgb[key] = hex_to_rgb(hex_val)
     couleurs_rgb['teal'] = hex_to_rgb(couleur_graphemes)
     couleurs_rgb['black'] = RGBColor(0, 0, 0)
 
@@ -259,16 +262,42 @@ with st.sidebar:
         horizontal=True
     )
 
-    # Choix de la police (menu déroulant avec le nom dans la police)
+    # Choix de la police (menu déroulant stylisé)
     st.subheader("📝 Police d'écriture")
     police_selectionnee = st.selectbox(
         "",
         POLICES,
-        format_func=lambda x: f'<span style="font-family:\'{x["nom"]}\'">{x["affichage"]}</span>',
+        format_func=lambda x: x['affichage'],
         index=0,
         key="police_select"
     )
     police = police_selectionnee['nom']
+
+    # Palette de couleurs
+    st.subheader("🎨 Couleurs")
+    palette = st.selectbox(
+        "Palette",
+        list(PALETTES.keys())
+    )
+
+    # Choix des couleurs personnalisées
+    if palette == "Standard":
+        st.markdown("**Personnaliser les couleurs**")
+        col_voyelles = st.color_picker("Voyelles", PALETTES["Standard"]['voyelles'])
+        col_consonnes = st.color_picker("Consonnes", PALETTES["Standard"]['consonnes'])
+        col_graphemes = st.color_picker("Graphèmes complexes", PALETTES["Standard"]['graphemes'])
+        col_muettes = st.color_picker("Lettres muettes", PALETTES["Standard"]['muettes'])
+        col_mots_outils = st.color_picker("Mots-outils", PALETTES["Standard"]['mots_outils'])
+
+        couleurs_config = {
+            'voyelles': col_voyelles,
+            'consonnes': col_consonnes,
+            'graphemes': col_graphemes,
+            'muettes': col_muettes,
+            'mots_outils': col_mots_outils
+        }
+    else:
+        couleurs_config = PALETTES[palette]
 
 # Zone principale
 col1, col2 = st.columns([1, 1])
@@ -336,8 +365,8 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
 
                 # Document 1 : Code complet
                 st.info("📄 Génération du document avec code couleur complet...")
-                texte_complet = colorier_texte(texte_travail, mots_outils_finaux, PALETTES["Standard"])
-                doc_complet = creer_word(texte_complet, police, PALETTES["Standard"], 'complet')
+                texte_complet = colorier_texte(texte_travail, mots_outils_finaux, couleurs_config)
+                doc_complet = creer_word(texte_complet, police, couleurs_config, 'complet')
 
                 buffer1 = io.BytesIO()
                 doc_complet.save(buffer1)
@@ -356,11 +385,11 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                 st.subheader("👀 Aperçu du document")
                 html_aperçu = f"""
                 <style>
-                .voyelles {{ color: {PALETTES["Standard"]['voyelles']}; }}
-                .consonnes {{ color: {PALETTES["Standard"]['consonnes']}; }}
-                .graphemes {{ color: {PALETTES["Standard"]['graphemes']}; }}
-                .muettes {{ color: {PALETTES["Standard"]['muettes']}; }}
-                .mots_outils {{ color: {PALETTES["Standard"]['mots_outils']}; }}
+                .voyelles {{ color: {couleurs_config['voyelles']}; }}
+                .consonnes {{ color: {couleurs_config['consonnes']}; }}
+                .graphemes {{ color: {couleurs_config['graphemes']}; }}
+                .muettes {{ color: {couleurs_config['muettes']}; }}
+                .mots_outils {{ color: {couleurs_config['mots_outils']}; }}
                 .teal {{ color: {couleur_graphemes}; }}
                 </style>
                 """
