@@ -7,11 +7,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import json
 import os
-# Initialiser le lecteur OCR (une seule fois)
-lecteur = easyocr.Reader(['fr'])
 
 # Chemin du fichier JSON pour sauvegarder les listes
 CHEMIN_LISTES = "listes_mots_outils.json"
+
+# Initialiser le lecteur OCR
+lecteur = easyocr.Reader(['fr'])
 
 # Configuration de la page
 st.set_page_config(
@@ -53,31 +54,31 @@ POLICES = [
 # Palettes daltoniennes
 PALETTES = {
     "Standard": {
-        'voyelles': "#FF0000",  # Rouge
-        'consonnes': "#0000FF",  # Bleu
-        'graphemes': "#008000",  # Vert
-        'muettes': "#808080",    # Gris
-        'mots_outils': "#8B4513" # Marron
+        'voyelles': "#FF0000",
+        'consonnes': "#0000FF",
+        'graphemes': "#008000",
+        'muettes': "#808080",
+        'mots_outils': "#8B4513"
     },
     "Daltonien (Deutan)": {
-        'voyelles': "#0072B2",  # Bleu
-        'consonnes': "#D55E00",  # Orange
-        'graphemes': "#009E73",  # Vert
-        'muettes': "#CC79A7",    # Rose
-        'mots_outils': "#E69F00" # Jaune
+        'voyelles': "#0072B2",
+        'consonnes': "#D55E00",
+        'graphemes': "#009E73",
+        'muettes': "#CC79A7",
+        'mots_outils': "#E69F00"
     },
     "Daltonien (Protan)": {
         'voyelles': "#0072B2",
         'consonnes': "#CC79A7",
         'graphemes': "#009E73",
-        'muettes': "#F0E442",    # Jaune
+        'muettes': "#F0E442",
         'mots_outils': "#E69F00"
     },
     "Daltonien (Tritan)": {
         'voyelles': "#0072B2",
         'consonnes': "#E69F00",
-        'graphemes': "#56B4E9",  # Bleu clair
-        'muettes': "#009E73",    # Vert
+        'graphemes': "#56B4E9",
+        'muettes': "#009E73",
         'mots_outils': "#F0E442"
     }
 }
@@ -88,7 +89,6 @@ def charger_listes():
         with open(CHEMIN_LISTES, "r", encoding="utf-8") as f:
             return json.load(f)
     else:
-        # Liste par défaut si le fichier n'existe pas
         return {
             "Taoki": ["le", "la", "un", "une", "je", "tu"],
             "Noisette": ["je", "tu", "il", "elle", "nous"],
@@ -109,7 +109,7 @@ def hex_to_rgb(hex_color):
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 def detecter_lettre_muette(mot, position):
-    """Détecte si une lettre est muette (en vrai mot uniquement)"""
+    """Détecte si une lettre est muette"""
     if position == len(mot) - 1:
         lettre = mot[position].lower()
         if lettre in lettres_muettes_fin:
@@ -205,7 +205,6 @@ def colorier_texte(texte, mots_outils, couleurs_config):
             continue
 
         trouve = False
-        # Vérifier les sons complexes
         for son in sorted(sons_complexes, key=len, reverse=True):
             if i + len(son) <= len(texte) and texte[i:i+len(son)].lower() == son:
                 for c in texte[i:i+len(son)]:
@@ -215,7 +214,6 @@ def colorier_texte(texte, mots_outils, couleurs_config):
                 break
 
         if not trouve:
-            # Vérifier les sons nasaux
             for son in sorted(sons_nasals, key=len, reverse=True):
                 if i + len(son) <= len(texte) and texte[i:i+len(son)].lower() == son:
                     if est_son_nasal_valide(texte, i, son):
@@ -256,7 +254,6 @@ def creer_word(texte, police, couleurs_config, type_doc, graphemes_cibles=None, 
     """Crée un document Word avec le texte coloré"""
     doc = Document()
 
-    # Convertir les couleurs hex en RGB
     couleurs_rgb = {}
     for key, hex_val in couleurs_config.items():
         r, g, b = hex_to_rgb(hex_val)
@@ -264,13 +261,11 @@ def creer_word(texte, police, couleurs_config, type_doc, graphemes_cibles=None, 
     couleurs_rgb['teal'] = hex_to_rgb(couleur_graphemes)
     couleurs_rgb['black'] = RGBColor(0, 0, 0)
 
-    # Titre du document
     if type_doc == 'complet':
         titre = 'Code couleur complet'
     else:
         titre = f"Graphèmes cibles : {', '.join(graphemes_cibles)}"
 
-    # Ajouter le texte
     para = doc.add_paragraph()
     for char, couleur in texte:
         run = para.add_run(char)
@@ -290,31 +285,26 @@ st.markdown("---")
 with st.sidebar:
     st.header("⚙️ Paramètres")
 
-    # Choix de la casse
     type_casse = st.radio(
         "📄 Casse du document final",
         ["Minuscules", "Majuscules"],
         horizontal=True
     )
 
-    # Choix de la police
     police = st.selectbox("📝 Police d'écriture", POLICES, index=1)
 
-    # Aperçu des polices
     with st.expander("👀 Aperçu des polices"):
         exemple_texte = "Le chat mange une souris."
         for font in POLICES:
             st.markdown(f"**{font}**")
             st.markdown(f"<p style='font-family:{font}; font-size:20px;'>{exemple_texte}</p>", unsafe_allow_html=True)
 
-    # Palette de couleurs
     palette = st.selectbox(
         "🎨 Palette de couleurs",
         list(PALETTES.keys())
     )
     couleurs_config = PALETTES[palette]
 
-    # Mots-outils
     st.subheader("📝 Mots-outils")
     utiliser_base = st.checkbox("Utiliser la liste de base", value=True)
     manuel = st.selectbox("📚 Liste par manuel", ["Aucun"] + list(LISTES_MANUELS.keys()))
@@ -333,7 +323,6 @@ with st.sidebar:
         mots_ajout = [m.strip() for m in mots_perso.split(',') if m.strip()]
         mots_outils_finaux.extend(mots_ajout)
 
-    # Gestion des listes de mots-outils
     with st.expander("⚙️ Gérer les listes de mots-outils"):
         st.markdown("**Ajouter/Modifier une liste**")
 
@@ -364,7 +353,6 @@ with st.sidebar:
                 else:
                     st.warning("Cette liste n'existe pas.")
 
-        # Afficher les listes existantes
         st.markdown("**Listes existantes**")
         for nom, mots in LISTES_MANUELS.items():
             st.write(f"**{nom}** : {', '.join(mots)}")
@@ -401,24 +389,14 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
         st.error("❌ Veuillez indiquer au moins un graphème cible !")
     else:
         with st.spinner("⏳ Extraction et traitement en cours..."):
-    try:
-        # Extraire le texte
-        resultat_ocr = lecteur.readtext(image, detail=0)
-        texte_brut = " ".join(resultat_ocr)
+            try:
+                # Extraire le texte avec easyocr
+                resultat_ocr = lecteur.readtext(image, detail=0)
+                texte_brut = " ".join(resultat_ocr)
 
-        if not texte_brut.strip():
-            st.error("❌ Aucun texte détecté dans l'image. Essayez une autre image ou améliorez la qualité.")
-            st.stop()
-
-        # Suite du traitement...
-        texte_brut = remplacer_separateurs(texte_brut)
-        texte_travail = ajouter_espaces_entre_mots(texte_brut)
-
-        # ... (le reste de ton code)
-
-    except Exception as e:
-        st.error(f"❌ Erreur lors de l'extraction du texte : {str(e)}")
-
+                if not texte_brut.strip():
+                    st.error("❌ Aucun texte détecté dans l'image. Essayez une autre image ou améliorez la qualité.")
+                    st.stop()
 
                 # Traiter le texte
                 texte_brut = remplacer_separateurs(texte_brut)
@@ -454,24 +432,16 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
 
                 # Aperçu
                 st.subheader("👀 Aperçu du document")
-                html_aperçu = """
+                html_aperçu = f"""
                 <style>
-                .voyelles { color: {}; }
-                .consonnes { color: {}; }
-                .graphemes { color: {}; }
-                .muettes { color: {}; }
-                .mots_outils { color: {}; }
-                .teal { color: {}; }
+                .voyelles {{ color: {couleurs_config['voyelles']}; }}
+                .consonnes {{ color: {couleurs_config['consonnes']}; }}
+                .graphemes {{ color: {couleurs_config['graphemes']}; }}
+                .muettes {{ color: {couleurs_config['muettes']}; }}
+                .mots_outils {{ color: {couleurs_config['mots_outils']}; }}
+                .teal {{ color: {couleur_graphemes}; }}
                 </style>
-                """.format(
-                    couleurs_config['voyelles'],
-                    couleurs_config['consonnes'],
-                    couleurs_config['graphemes'],
-                    couleurs_config['muettes'],
-                    couleurs_config['mots_outils'],
-                    couleur_graphemes
-                )
-
+                """
                 for char, couleur in texte_complet:
                     if couleur:
                         html_aperçu += f"<span class='{couleur}'>{char}</span>"
@@ -504,3 +474,4 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
 
 st.markdown("---")
 st.markdown("*Créé avec ❤️ pour aider les enseignants et les élèves - Projet open source*")
+
