@@ -1,5 +1,5 @@
 import streamlit as st
-import pytesseract
+import easyocr
 from PIL import Image
 from docx import Document
 from docx.shared import RGBColor, Pt
@@ -7,6 +7,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import json
 import os
+# Initialiser le lecteur OCR (une seule fois)
+lecteur = easyocr.Reader(['fr'])
 
 # Chemin du fichier JSON pour sauvegarder les listes
 CHEMIN_LISTES = "listes_mots_outils.json"
@@ -401,7 +403,9 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
         with st.spinner("⏳ Extraction et traitement en cours..."):
             try:
                 # Extraire le texte
-                texte_brut = pytesseract.image_to_string(image, lang='fra')
+              resultat_ocr = lecteur.readtext(image, detail=0)
+texte_brut = " ".join(resultat_ocr)
+
                 if not texte_brut.strip():
                     st.error("❌ Aucun texte détecté dans l'image. Essayez une autre image ou améliorez la qualité.")
                     st.stop()
