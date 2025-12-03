@@ -1,5 +1,6 @@
 import streamlit as st
 import easyocr
+import numpy as np
 from PIL import Image
 from docx import Document
 from docx.shared import RGBColor, Pt
@@ -7,9 +8,6 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import json
 import os
-
-# Chemin du fichier JSON pour sauvegarder les listes
-CHEMIN_LISTES = "listes_mots_outils.json"
 
 # Initialiser le lecteur OCR
 lecteur = easyocr.Reader(['fr'])
@@ -41,14 +39,13 @@ MOTS_OUTILS_BASE = [
     'mon', 'ma', 'mes', 'ton', 'ta', 'tes', 'son', 'sa', 'ses'
 ]
 
-# Polices disponibles
+# Polices disponibles (Belle Allure doit être installée sur le PC de l'utilisateur)
 POLICES = [
-    'OpenDyslexic',
-    'Quicksand Book',
-    'Belle Allure',
-    'Arial',
-    'Comic Sans MS',
-    'Helvetica'
+    {'nom': 'OpenDyslexic', 'affichage': 'OpenDyslexic'},
+    {'nom': 'Belle Allure', 'affichage': 'Belle Allure'},
+    {'nom': 'Arial', 'affichage': 'Arial'},
+    {'nom': 'Comic Sans MS', 'affichage': 'Comic Sans MS'},
+    {'nom': 'Helvetica', 'affichage': 'Helvetica'}
 ]
 
 # Palettes daltoniennes
@@ -83,33 +80,11 @@ PALETTES = {
     }
 }
 
-def charger_listes():
-    """Charge les listes de mots-outils depuis le fichier JSON"""
-    if os.path.exists(CHEMIN_LISTES):
-        with open(CHEMIN_LISTES, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        return {
-            "Taoki": ["le", "la", "un", "une", "je", "tu"],
-            "Noisette": ["je", "tu", "il", "elle", "nous"],
-            "Fil et Lulu": ["le", "la", "les", "un", "une", "des"]
-        }
-
-def sauvegarder_listes(listes):
-    """Sauvegarde les listes dans le fichier JSON"""
-    with open(CHEMIN_LISTES, "w", encoding="utf-8") as f:
-        json.dump(listes, f, indent=4, ensure_ascii=False)
-
-# Charger les listes au démarrage
-LISTES_MANUELS = charger_listes()
-
 def hex_to_rgb(hex_color):
-    """Convertit une couleur hex en RGB"""
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 def detecter_lettre_muette(mot, position):
-    """Détecte si une lettre est muette"""
     if position == len(mot) - 1:
         lettre = mot[position].lower()
         if lettre in lettres_muettes_fin:
@@ -121,7 +96,6 @@ def detecter_lettre_muette(mot, position):
     return False
 
 def extraire_mot_complet(texte, position):
-    """Extrait le mot complet autour d'une position donnée"""
     debut = position
     while debut > 0 and texte[debut - 1].isalpha():
         debut -= 1
@@ -131,7 +105,6 @@ def extraire_mot_complet(texte, position):
     return texte[debut:fin], debut, fin
 
 def est_son_nasal_valide(texte, position, son):
-    """Vérifie si un son nasal est valide dans son contexte"""
     pos_apres = position + len(son)
     if pos_apres >= len(texte):
         return True
@@ -145,7 +118,6 @@ def est_son_nasal_valide(texte, position, son):
     return True
 
 def remplacer_separateurs(texte):
-    """Remplace les points par des séparateurs visuels si nécessaire"""
     resultat = ""
     i = 0
     while i < len(texte):
@@ -165,7 +137,6 @@ def remplacer_separateurs(texte):
     return resultat
 
 def ajouter_espaces_entre_mots(texte):
-    """Ajoute des espaces entre les mots pour une meilleure lisibilité"""
     resultat = ""
     for i, char in enumerate(texte):
         if char == ' ':
@@ -178,7 +149,6 @@ def ajouter_espaces_entre_mots(texte):
     return resultat
 
 def colorier_texte(texte, mots_outils, couleurs_config):
-    """Colorie le texte selon les règles définies"""
     resultat_word = []
     mots_outils_lower = {mot.lower() for mot in mots_outils}
     i = 0
@@ -233,7 +203,6 @@ def colorier_texte(texte, mots_outils, couleurs_config):
     return resultat_word
 
 def colorier_graphemes_cibles(texte, graphemes, couleur):
-    """Colorie uniquement les graphèmes cibles"""
     resultat_word = []
     i = 0
     while i < len(texte):
@@ -251,9 +220,7 @@ def colorier_graphemes_cibles(texte, graphemes, couleur):
     return resultat_word
 
 def creer_word(texte, police, couleurs_config, type_doc, graphemes_cibles=None, couleur_graphemes="#069494"):
-    """Crée un document Word avec le texte coloré"""
     doc = Document()
-
     couleurs_rgb = {}
     for key, hex_val in couleurs_config.items():
         r, g, b = hex_to_rgb(hex_val)
@@ -285,77 +252,23 @@ st.markdown("---")
 with st.sidebar:
     st.header("⚙️ Paramètres")
 
+    # Choix de la casse
     type_casse = st.radio(
         "📄 Casse du document final",
         ["Minuscules", "Majuscules"],
         horizontal=True
     )
 
-    police = st.selectbox("📝 Police d'écriture", POLICES, index=1)
-
-    with st.expander("👀 Aperçu des polices"):
-        exemple_texte = "Le chat mange une souris."
-        for font in POLICES:
-            st.markdown(f"**{font}**")
-            st.markdown(f"<p style='font-family:{font}; font-size:20px;'>{exemple_texte}</p>", unsafe_allow_html=True)
-
-    palette = st.selectbox(
-        "🎨 Palette de couleurs",
-        list(PALETTES.keys())
+    # Choix de la police (menu déroulant avec le nom dans la police)
+    st.subheader("📝 Police d'écriture")
+    police_selectionnee = st.selectbox(
+        "",
+        POLICES,
+        format_func=lambda x: f'<span style="font-family:\'{x["nom"]}\'">{x["affichage"]}</span>',
+        index=0,
+        key="police_select"
     )
-    couleurs_config = PALETTES[palette]
-
-    st.subheader("📝 Mots-outils")
-    utiliser_base = st.checkbox("Utiliser la liste de base", value=True)
-    manuel = st.selectbox("📚 Liste par manuel", ["Aucun"] + list(LISTES_MANUELS.keys()))
-
-    mots_outils_finaux = []
-    if utiliser_base:
-        mots_outils_finaux.extend(MOTS_OUTILS_BASE)
-    if manuel != "Aucun":
-        mots_outils_finaux.extend(LISTES_MANUELS[manuel])
-
-    mots_perso = st.text_area(
-        "Ajouter vos mots (séparés par des virgules)",
-        placeholder="Exemple: car, mais, donc, or..."
-    )
-    if mots_perso:
-        mots_ajout = [m.strip() for m in mots_perso.split(',') if m.strip()]
-        mots_outils_finaux.extend(mots_ajout)
-
-    with st.expander("⚙️ Gérer les listes de mots-outils"):
-        st.markdown("**Ajouter/Modifier une liste**")
-
-        nom_liste = st.text_input("Nom de la liste (ex: Taoki 2024)", key="nom_liste")
-        nouveaux_mots = st.text_area(
-            "Mots de la liste (séparés par des virgules)",
-            placeholder="Exemple: le, la, un, une, je, tu",
-            key="nouveaux_mots"
-        )
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("💾 Sauvegarder la liste", key="sauvegarder_liste"):
-                if nom_liste and nouveaux_mots:
-                    mots = [m.strip() for m in nouveaux_mots.split(",") if m.strip()]
-                    LISTES_MANUELS[nom_liste] = mots
-                    sauvegarder_listes(LISTES_MANUELS)
-                    st.success(f"Liste '{nom_liste}' sauvegardée !")
-                else:
-                    st.warning("Veuillez remplir le nom et les mots.")
-
-        with col2:
-            if st.button("🗑️ Supprimer une liste", key="supprimer_liste"):
-                if nom_liste in LISTES_MANUELS:
-                    del LISTES_MANUELS[nom_liste]
-                    sauvegarder_listes(LISTES_MANUELS)
-                    st.success(f"Liste '{nom_liste}' supprimée.")
-                else:
-                    st.warning("Cette liste n'existe pas.")
-
-        st.markdown("**Listes existantes**")
-        for nom, mots in LISTES_MANUELS.items():
-            st.write(f"**{nom}** : {', '.join(mots)}")
+    police = police_selectionnee['nom']
 
 # Zone principale
 col1, col2 = st.columns([1, 1])
@@ -370,6 +283,7 @@ with col1:
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Image uploadée", use_column_width=True)
+        image_np = np.array(image)  # Convertir en tableau numpy pour easyocr
 
 with col2:
     st.header("🎯 Graphèmes cibles")
@@ -381,6 +295,16 @@ with col2:
 
     couleur_graphemes = st.color_picker("Couleur des graphèmes cibles", "#069494")
 
+# Mots-outils
+mots_outils_finaux = MOTS_OUTILS_BASE.copy()
+mots_perso = st.text_area(
+    "📝 Ajouter vos mots-outils (séparés par des virgules)",
+    placeholder="Exemple: car, mais, donc, or..."
+)
+if mots_perso:
+    mots_ajout = [m.strip() for m in mots_perso.split(',') if m.strip()]
+    mots_outils_finaux.extend(mots_ajout)
+
 # Bouton de génération
 if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width=True):
     if not uploaded_file:
@@ -390,15 +314,13 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
     else:
         with st.spinner("⏳ Extraction et traitement en cours..."):
             try:
-                # Extraire le texte avec easyocr
-                resultat_ocr = lecteur.readtext(image, detail=0)
+                resultat_ocr = lecteur.readtext(image_np, detail=0)
                 texte_brut = " ".join(resultat_ocr)
 
                 if not texte_brut.strip():
                     st.error("❌ Aucun texte détecté dans l'image. Essayez une autre image ou améliorez la qualité.")
                     st.stop()
 
-                # Traiter le texte
                 texte_brut = remplacer_separateurs(texte_brut)
                 texte_travail = ajouter_espaces_entre_mots(texte_brut)
 
@@ -414,8 +336,8 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
 
                 # Document 1 : Code complet
                 st.info("📄 Génération du document avec code couleur complet...")
-                texte_complet = colorier_texte(texte_travail, mots_outils_finaux, couleurs_config)
-                doc_complet = creer_word(texte_complet, police, couleurs_config, 'complet')
+                texte_complet = colorier_texte(texte_travail, mots_outils_finaux, PALETTES["Standard"])
+                doc_complet = creer_word(texte_complet, police, PALETTES["Standard"], 'complet')
 
                 buffer1 = io.BytesIO()
                 doc_complet.save(buffer1)
@@ -434,11 +356,11 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                 st.subheader("👀 Aperçu du document")
                 html_aperçu = f"""
                 <style>
-                .voyelles {{ color: {couleurs_config['voyelles']}; }}
-                .consonnes {{ color: {couleurs_config['consonnes']}; }}
-                .graphemes {{ color: {couleurs_config['graphemes']}; }}
-                .muettes {{ color: {couleurs_config['muettes']}; }}
-                .mots_outils {{ color: {couleurs_config['mots_outils']}; }}
+                .voyelles {{ color: {PALETTES["Standard"]['voyelles']}; }}
+                .consonnes {{ color: {PALETTES["Standard"]['consonnes']}; }}
+                .graphemes {{ color: {PALETTES["Standard"]['graphemes']}; }}
+                .muettes {{ color: {PALETTES["Standard"]['muettes']}; }}
+                .mots_outils {{ color: {PALETTES["Standard"]['mots_outils']}; }}
                 .teal {{ color: {couleur_graphemes}; }}
                 </style>
                 """
@@ -474,4 +396,3 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
 
 st.markdown("---")
 st.markdown("*Créé avec ❤️ pour aider les enseignants et les élèves - Projet open source*")
-
