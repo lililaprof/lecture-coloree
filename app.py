@@ -401,14 +401,24 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
         st.error("❌ Veuillez indiquer au moins un graphème cible !")
     else:
         with st.spinner("⏳ Extraction et traitement en cours..."):
-            try:
-                # Extraire le texte
-              resultat_ocr = lecteur.readtext(image, detail=0)
-texte_brut = " ".join(resultat_ocr)
+    try:
+        # Extraire le texte
+        resultat_ocr = lecteur.readtext(image, detail=0)
+        texte_brut = " ".join(resultat_ocr)
 
-                if not texte_brut.strip():
-                    st.error("❌ Aucun texte détecté dans l'image. Essayez une autre image ou améliorez la qualité.")
-                    st.stop()
+        if not texte_brut.strip():
+            st.error("❌ Aucun texte détecté dans l'image. Essayez une autre image ou améliorez la qualité.")
+            st.stop()
+
+        # Suite du traitement...
+        texte_brut = remplacer_separateurs(texte_brut)
+        texte_travail = ajouter_espaces_entre_mots(texte_brut)
+
+        # ... (le reste de ton code)
+
+    except Exception as e:
+        st.error(f"❌ Erreur lors de l'extraction du texte : {str(e)}")
+
 
                 # Traiter le texte
                 texte_brut = remplacer_separateurs(texte_brut)
