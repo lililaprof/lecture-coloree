@@ -1,13 +1,16 @@
 import streamlit as st
 from PIL import Image
+import pytesseract
+import cv2
+import numpy as np
 from docx import Document
 from docx.shared import RGBColor, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
-import json
 import os
-import requests
-import base64
+
+# Configuration de pytesseract pour Streamlit Cloud
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 # Configuration de la page
 st.set_page_config(
@@ -242,19 +245,11 @@ def creer_word(texte, police, couleurs_config, type_doc, graphemes_cibles=None, 
     return doc
 
 def extraire_texte_de_image(image):
-    """Utilise une API externe pour extraire le texte de l'image"""
-    try:
-        # Convertir l'image en base64
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-        # Utiliser une API externe pour l'OCR (exemple avec une API fictive)
-        # Pour un vrai projet, utilise une API comme Google Vision, Azure Computer Vision, etc.
-        # Ici, on simule une extraction de texte pour l'exemple
-        return "Texte extrait de l'image"  # Remplace par une vraie extraction via API
-    except Exception as e:
-        return f"Erreur lors de l'extraction: {str(e)}"
+    # Convertir l'image en niveaux de gris pour une meilleure reconnaissance
+    img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2GRAY)
+    # Utiliser pytesseract pour extraire le texte
+    texte = pytesseract.image_to_string(img_cv, lang='fra')
+    return texte
 
 # Interface Streamlit
 st.title("📚 Lecture Colorée pour CP")
@@ -371,7 +366,7 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                 st.success("✅ Texte extrait avec succès !")
 
                 with st.expander("👀 Voir le texte extrait"):
-                    st.text(texte_travail)
+                    st.text(texte_brut)
 
                 # Document 1 : Code complet
                 st.info("📄 Génération du document avec code couleur complet...")
