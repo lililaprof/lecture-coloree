@@ -1,4 +1,6 @@
 tesseract-ocr
 libtesseract-dev
 tesseract-ocr-fra
-
+libsm6
+libxext6
+libxrender-dev
