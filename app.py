@@ -7,7 +7,6 @@ from docx import Document
 from docx.shared import RGBColor, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
-import json
 import os
 
 # Configuration de la page
@@ -21,7 +20,7 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    .stSelectbox div div div {
+    .police-preview {
         font-family: inherit;
     }
     </style>
@@ -94,7 +93,6 @@ PALETTES = {
 LISTES_MANUELS = {
     "Taoki": ["le", "la", "un", "une", "je", "tu"],
     "Noisette": ["je", "tu", "il", "elle", "nous"],
-    # Ajoute d'autres listes ici au fur et à mesure
 }
 
 # Fonction pour ajouter une nouvelle liste de mots-outils
@@ -149,7 +147,7 @@ def remplacer_separateurs(texte):
                 if reste and (reste[0].isupper() or reste[0] == '\n'):
                     resultat += '.'
                 else:
-                    resultat += ' •'
+                    resultat += ' • '
             else:
                 resultat += '.'
             i += 1
@@ -163,12 +161,21 @@ def ajouter_espaces_entre_mots(texte):
     for i, char in enumerate(texte):
         if char == ' ':
             if i > 0 and texte[i-1] != ' ':
-                resultat += '  '
+                resultat += ' '
             elif i == 0:
-                resultat += '  '
+                resultat += ' '
         else:
             resultat += char
     return resultat
+
+def capitaliser_phrases(texte):
+    phrases = texte.split('. ')
+    phrases_capitalisees = []
+    for phrase in phrases:
+        if phrase.strip():
+            phrase_capitalisee = phrase[0].upper() + phrase[1:] if phrase else phrase
+            phrases_capitalisees.append(phrase_capitalisee)
+    return '. '.join(phrases_capitalisees)
 
 def extraire_texte_de_image(image):
     try:
@@ -178,8 +185,12 @@ def extraire_texte_de_image(image):
         # Appliquer un seuil binaire pour améliorer le contraste
         _, img_array = cv2.threshold(img_array, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        # Utiliser pytesseract pour extraire le texte
-        texte = pytesseract.image_to_string(img_array, lang='fra')
+        # Utiliser pytesseract pour extraire le texte avec des options améliorées
+        custom_config = r'--oem 3 --psm 6'
+        texte = pytesseract.image_to_string(img_array, lang='fra', config=custom_config)
+
+        # Remplacer les sauts de ligne par des espaces
+        texte = texte.replace('\n', ' ')
 
         return texte
     except Exception as e:
@@ -301,7 +312,7 @@ with st.sidebar:
     police_selectionnee = st.selectbox(
         "",
         POLICES,
-        format_func=lambda x: f'<span style="font-family:\'{x["nom"]}\'">{x["nom"]}</span>',
+        format_func=lambda x: f'<p class="police-preview" style="font-family: \'{x["nom"]}\'">{x["nom"]}</p>',
         index=0,
         key="police_select"
     )
@@ -415,6 +426,7 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
 
                 # Traiter le texte
                 texte_brut = remplacer_separateurs(texte_brut)
+                texte_brut = capitaliser_phrases(texte_brut)
                 texte_travail = ajouter_espaces_entre_mots(texte_brut)
 
                 if type_casse == "Majuscules":
@@ -425,7 +437,7 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                 st.success("✅ Texte extrait avec succès !")
 
                 with st.expander("👀 Voir le texte extrait"):
-                    st.text(texte_brut)
+                    st.text(texte_travail)
 
                 # Document 1 : Code complet
                 st.info("📄 Génération du document avec code couleur complet...")
@@ -456,12 +468,14 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                 .mots_outils {{ color: {couleurs_config['mots_outils']}; }}
                 .teal {{ color: {couleur_graphemes}; }}
                 </style>
+                <div style="font-family: '{police}'; font-size: 20px;">
                 """
                 for char, couleur in texte_complet:
                     if couleur:
                         html_aperçu += f"<span class='{couleur}'>{char}</span>"
                     else:
                         html_aperçu += char
+                html_aperçu += "</div>"
                 st.markdown(html_aperçu, unsafe_allow_html=True)
 
                 # Téléchargements
