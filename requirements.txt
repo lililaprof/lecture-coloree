@@ -1,6 +1,6 @@
 streamlit
 pillow
 pytesseract
-opencv-python-headless  # Utilisez cette version pour éviter les conflits
+opencv-python-headless
 python-docx
 numpy
