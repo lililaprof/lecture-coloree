@@ -1,5 +1,6 @@
 streamlit
-easyocr
 pillow
-python-docx
+pytesseract
 opencv-python
+python-docx
+numpy
