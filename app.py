@@ -7,16 +7,26 @@ from docx import Document
 from docx.shared import RGBColor, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
+import json
 import os
-
-# Configuration de pytesseract pour Streamlit Cloud
-pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 # Configuration de la page
 st.set_page_config(
     page_title="Lecture Colorée CP",
     page_icon="📚",
     layout="wide"
+)
+
+# Activation de l'affichage HTML pour les polices
+st.markdown(
+    """
+    <style>
+    .stSelectbox div div div {
+        font-family: inherit;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
 # Définitions globales
@@ -41,11 +51,11 @@ MOTS_OUTILS_BASE = [
 
 # Polices disponibles
 POLICES = [
-    {'nom': 'Arial', 'affichage': '<span style="font-family:Arial">Arial</span>'},
-    {'nom': 'Comic Sans MS', 'affichage': '<span style="font-family:Comic Sans MS">Comic Sans MS</span>'},
-    {'nom': 'Helvetica', 'affichage': '<span style="font-family:Helvetica">Helvetica</span>'},
-    {'nom': 'OpenDyslexic', 'affichage': '<span style="font-family:OpenDyslexic">OpenDyslexic</span>'},
-    {'nom': 'Belle Allure', 'affichage': '<span style="font-family:Belle Allure">Belle Allure</span>'}
+    {'nom': 'Arial', 'affichage': 'Arial'},
+    {'nom': 'Comic Sans MS', 'affichage': 'Comic Sans MS'},
+    {'nom': 'Helvetica', 'affichage': 'Helvetica'},
+    {'nom': 'OpenDyslexic', 'affichage': 'OpenDyslexic'},
+    {'nom': 'Belle Allure', 'affichage': 'Belle Allure'}
 ]
 
 # Palettes daltoniennes
@@ -79,6 +89,17 @@ PALETTES = {
         'mots_outils': "#F0E442"
     }
 }
+
+# Dictionnaire pour stocker les listes de mots-outils par manuel
+LISTES_MANUELS = {
+    "Taoki": ["le", "la", "un", "une", "je", "tu"],
+    "Noisette": ["je", "tu", "il", "elle", "nous"],
+    # Ajoute d'autres listes ici au fur et à mesure
+}
+
+# Fonction pour ajouter une nouvelle liste de mots-outils
+def ajouter_liste_manuel(nom_manuel, mots):
+    LISTES_MANUELS[nom_manuel] = mots
 
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
@@ -148,6 +169,21 @@ def ajouter_espaces_entre_mots(texte):
         else:
             resultat += char
     return resultat
+
+def extraire_texte_de_image(image):
+    try:
+        # Convertir l'image en niveaux de gris
+        img_array = np.array(image.convert('L'))
+
+        # Appliquer un seuil binaire pour améliorer le contraste
+        _, img_array = cv2.threshold(img_array, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Utiliser pytesseract pour extraire le texte
+        texte = pytesseract.image_to_string(img_array, lang='fra')
+
+        return texte
+    except Exception as e:
+        return f"Erreur lors de l'extraction: {str(e)}"
 
 def colorier_texte(texte, mots_outils, couleurs_config):
     resultat_word = []
@@ -244,15 +280,6 @@ def creer_word(texte, police, couleurs_config, type_doc, graphemes_cibles=None, 
 
     return doc
 
-def extraire_texte_de_image(image):
-    try:
-        img_cv = np.array(image.convert('RGB'))
-        img_cv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-        texte = pytesseract.image_to_string(img_cv, lang='fra')
-        return texte
-    except Exception as e:
-        return f"Erreur lors de l'extraction: {str(e)}"
-
 # Interface Streamlit
 st.title("📚 Lecture Colorée pour CP")
 st.markdown("**Application d'adaptation de textes pour enfants dys et TSA**")
@@ -274,7 +301,7 @@ with st.sidebar:
     police_selectionnee = st.selectbox(
         "",
         POLICES,
-        format_func=lambda x: x['affichage'],
+        format_func=lambda x: f'<span style="font-family:\'{x["nom"]}\'">{x["nom"]}</span>',
         index=0,
         key="police_select"
     )
@@ -306,6 +333,30 @@ with st.sidebar:
     else:
         couleurs_config = PALETTES[palette]
 
+    # Gestion des listes de mots-outils
+    st.header("⚙️ Gestion des listes de mots-outils")
+
+    # Sélectionner un manuel
+    manuel = st.selectbox("Choisir un manuel", ["Aucun"] + list(LISTES_MANUELS.keys()))
+
+    # Ajouter une nouvelle liste de mots-outils
+    with st.expander("Ajouter une nouvelle liste"):
+        nom_nouveau_manuel = st.text_input("Nom du manuel")
+        nouveaux_mots = st.text_area("Mots (séparés par des virgules)")
+
+        if st.button("Ajouter la liste"):
+            if nom_nouveau_manuel and nouveaux_mots:
+                mots = [mot.strip() for mot in nouveaux_mots.split(",") if mot.strip()]
+                ajouter_liste_manuel(nom_nouveau_manuel, mots)
+                st.success(f"Liste '{nom_nouveau_manuel}' ajoutée avec succès !")
+            else:
+                st.warning("Veuillez remplir le nom et les mots.")
+
+    # Afficher les mots-outils du manuel sélectionné
+    if manuel != "Aucun":
+        st.subheader(f"Mots-outils pour {manuel}")
+        st.write(", ".join(LISTES_MANUELS[manuel]))
+
 # Zone principale
 col1, col2 = st.columns([1, 1])
 
@@ -332,6 +383,12 @@ with col2:
 
 # Mots-outils
 mots_outils_finaux = MOTS_OUTILS_BASE.copy()
+
+# Ajouter les mots-outils du manuel sélectionné
+if manuel != "Aucun":
+    mots_outils_finaux.extend(LISTES_MANUELS[manuel])
+
+# Ajouter les mots-outils personnalisés
 mots_perso = st.text_area(
     "📝 Ajouter vos mots-outils (séparés par des virgules)",
     placeholder="Exemple: car, mais, donc, or..."
