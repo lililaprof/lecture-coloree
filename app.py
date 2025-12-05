@@ -245,11 +245,13 @@ def creer_word(texte, police, couleurs_config, type_doc, graphemes_cibles=None, 
     return doc
 
 def extraire_texte_de_image(image):
-    # Convertir l'image en niveaux de gris pour une meilleure reconnaissance
-    img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2GRAY)
-    # Utiliser pytesseract pour extraire le texte
-    texte = pytesseract.image_to_string(img_cv, lang='fra')
-    return texte
+    try:
+        img_cv = np.array(image.convert('RGB'))
+        img_cv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+        texte = pytesseract.image_to_string(img_cv, lang='fra')
+        return texte
+    except Exception as e:
+        return f"Erreur lors de l'extraction: {str(e)}"
 
 # Interface Streamlit
 st.title("📚 Lecture Colorée pour CP")
