@@ -5,8 +5,9 @@ import cv2
 import numpy as np
 from docx import Document
 from docx.shared import RGBColor, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 import io
+import re
 
 # Configuration de la page
 st.set_page_config(
@@ -21,6 +22,12 @@ st.markdown("""
 .police-preview {
     font-family: inherit;
     font-size: 18px;
+}
+.document-preview {
+    font-family: inherit;
+    font-size: 24px;
+    line-height: 2;
+    white-space: pre-wrap;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -53,23 +60,19 @@ POLICES = [
     {'nom': 'Belle Allure', 'affichage': 'Belle Allure'}
 ]
 
-# Palettes de couleurs
-PALETTES = {
-    "Standard": {
-        'voyelles': "#FF0000",
-        'consonnes': "#0000FF",
-        'graphemes': "#008000",
-        'muettes': "#808080",
-        'mots_outils': "#8B4513"
-    }
+# Couleurs par défaut
+COULEURS_DEFAUT = {
+    'voyelles': "#FF0000",
+    'consonnes': "#0000FF",
+    'graphemes': "#008000",
+    'muettes': "#808080",
+    'mots_outils': "#8B4513"
 }
 
-# Fonction pour convertir hex en RGB
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return RGBColor(*tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)))
 
-# Détection lettre muette
 def detecter_lettre_muette(mot, position):
     if position == len(mot) - 1:
         lettre = mot[position].lower()
@@ -77,7 +80,6 @@ def detecter_lettre_muette(mot, position):
             return True
     return position == 0 and mot[position].lower() == 'h'
 
-# Extraction de mot complet
 def extraire_mot_complet(texte, position):
     debut = position
     while debut > 0 and texte[debut - 1].isalpha():
@@ -87,37 +89,42 @@ def extraire_mot_complet(texte, position):
         fin += 1
     return texte[debut:fin], debut, fin
 
-# Validation son nasal
 def est_son_nasal_valide(texte, position, son):
     pos_apres = position + len(son)
     if pos_apres >= len(texte):
         return True
     char_apres = texte[pos_apres].lower()
-    if char_apres in voyelles or (son[-1] == 'n' and char_apres == 'n') or (son[-1] == 'm' and char_apres == 'm'):
-        return False
-    return True
+    return not (char_apres in voyelles or
+                (son[-1] == 'n' and char_apres == 'n') or
+                (son[-1] == 'm' and char_apres == 'm'))
 
-# Traitement des points
-def traiter_points(texte):
-    return texte.replace('. ', ' . ').replace('.', ' . ').replace('  ', ' ').strip()
+def traiter_texte(texte):
+    # Conserver les sauts de ligne et espaces significatifs
+    texte = re.sub(r'(?<!\n)\n(?!\n)', ' ', texte)  # Remplacer les sauts de ligne simples par un espace
+    texte = re.sub(r'\n{2,}', '\n\n', texte)  # Conserver les doubles sauts de ligne
+    texte = re.sub(r'([?.!])\s*', r'\1\n\n', texte)  # Saut de ligne après ponctuation forte
+    return texte.strip()
 
-# Capitalisation des phrases
 def capitaliser_phrases(texte):
-    phrases = texte.split(' . ')
-    return ' . '.join(p.capitalize() if p else p for p in phrases)
+    lines = texte.split('\n')
+    capitalized = []
+    for line in lines:
+        if line.strip():
+            capitalized.append(line[0].upper() + line[1:] if line else line)
+        else:
+            capitalized.append(line)
+    return '\n'.join(capitalized)
 
-# Extraction de texte améliorée
 def extraire_texte_de_image(image):
     try:
         img = np.array(image.convert('L'))
         _, img = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        config = r'--oem 3 --psm 6'
+        config = r'--oem 3 --psm 6 preserve_interword_spaces'
         return pytesseract.image_to_string(img, lang='fra', config=config)
     except Exception as e:
         return f"Erreur: {str(e)}"
 
-# Colorisation du texte
-def colorier_texte(texte, mots_outils):
+def colorier_texte(texte, mots_outils, couleurs):
     resultat = []
     mots_outils_lower = {m.lower() for m in mots_outils}
     i = 0
@@ -143,39 +150,53 @@ def colorier_texte(texte, mots_outils):
 
         for son in sorted(sons_complexes + sons_nasals, key=len, reverse=True):
             if i + len(son) <= len(texte) and texte[i:i+len(son)].lower() == son:
-                resultat.extend((c, 'graphemes') for c in texte[i:i+len(son)])
-                i += len(son)
-                break
+                if est_son_nasal_valide(texte, i, son):
+                    resultat.extend((c, 'graphemes') for c in texte[i:i+len(son)])
+                    i += len(son)
+                    break
         else:
             resultat.append((char, 'voyelles' if char.lower() in voyelles else 'consonnes'))
             i += 1
     return resultat
 
-# Création du document Word
 def creer_document(texte, police, couleurs):
     doc = Document()
-    para = doc.add_paragraph()
-    para.paragraph_format.line_spacing = 2
-    para.paragraph_format.space_after = Pt(12)
+    doc.add_paragraph()  # Paragraphe vide pour la marge
 
-    for char, couleur in texte:
-        run = para.add_run(char)
-        run.font.size = Pt(25)
-        run.font.name = police
-        if couleur:
-            run.font.color.rgb = hex_to_rgb(couleurs[couleur])
+    for line in texte.split('\n'):
+        if not line.strip():
+            doc.add_paragraph()
+            continue
+
+        para = doc.add_paragraph()
+        para.paragraph_format.line_spacing = 2
+        para.paragraph_format.space_after = Pt(12)
+        para.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+
+        for char, couleur in line:
+            run = para.add_run(char)
+            run.font.size = Pt(25)
+            run.font.name = police
+            if couleur:
+                run.font.color.rgb = hex_to_rgb(couleurs[couleur])
+            else:
+                run.font.color.rgb = RGBColor(0, 0, 0)
+
+        # Espace entre les phrases
+        if line.strip()[-1] in '.!?':
+            para.add_run('  ')
 
     return doc
 
-# Interface principale
+# Interface Streamlit
 st.title("📚 Lecture Colorée CP")
-st.markdown("Application d'adaptation de textes pour enfants dys et TSA")
+st.markdown("Application d'adaptation de textes pour enfants DYS et TSA")
 
 # Sidebar
 with st.sidebar:
     st.header("Paramètres")
 
-    # Choix police
+    # Choix police avec aperçu
     police_selectionnee = st.selectbox(
         "Police d'écriture",
         POLICES,
@@ -187,21 +208,11 @@ with st.sidebar:
     # Aperçu police
     st.markdown(f'<p style="font-family:{police}; font-size:20px;">Exemple: Le chat mange une souris.</p>', unsafe_allow_html=True)
 
-    # Choix couleurs
+    # Personnalisation couleurs
     st.subheader("Couleurs")
-    col_voyelles = st.color_picker("Voyelles", "#FF0000")
-    col_consonnes = st.color_picker("Consonnes", "#0000FF")
-    col_graphemes = st.color_picker("Graphèmes", "#008000")
-    col_muettes = st.color_picker("Lettres muettes", "#808080")
-    col_mots_outils = st.color_picker("Mots-outils", "#8B4513")
-
-    couleurs = {
-        'voyelles': col_voyelles,
-        'consonnes': col_consonnes,
-        'graphemes': col_graphemes,
-        'muettes': col_muettes,
-        'mots_outils': col_mots_outils
-    }
+    couleurs = {}
+    for type_char, default in COULEURS_DEFAUT.items():
+        couleurs[type_char] = st.color_picker(type_char.capitalize(), default)
 
 # Upload image
 uploaded_file = st.file_uploader("Upload image", type=['png', 'jpg', 'jpeg'])
@@ -209,18 +220,17 @@ if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image, caption="Image uploadée", width=400)
 
-    # Zone de saisie
+    # Zones de saisie
     graphemes_cibles = st.text_area("Graphèmes cibles (un par ligne)")
     mots_perso = st.text_area("Mots-outils supplémentaires (séparés par virgules)")
 
     # Bouton génération
-    if st.button("Générer les documents"):
+    if st.button("Générer le document"):
         with st.spinner("Traitement en cours..."):
-            # Extraction texte
+            # Extraction et traitement du texte
             texte_brut = extraire_texte_de_image(image)
-            texte_brut = traiter_points(texte_brut)
+            texte_brut = traiter_texte(texte_brut)
             texte_brut = capitaliser_phrases(texte_brut)
-            texte_brut = '  '.join(texte_brut.split())
 
             # Préparation mots-outils
             mots_outils = MOTS_OUTILS_BASE.copy()
@@ -228,26 +238,33 @@ if uploaded_file:
                 mots_outils.extend(m.strip() for m in mots_perso.split(',') if m.strip())
 
             # Colorisation
-            texte_colorie = colorier_texte(texte_brut, mots_outils)
-
-            # Création documents
-            doc = creer_document(texte_colorie, police, couleurs)
+            texte_colorie = []
+            for line in texte_brut.split('\n'):
+                texte_colorie.append(colorier_texte(line, mots_outils, couleurs))
+                texte_colorie.append([('\n', None)])  # Conserver les sauts de ligne
 
             # Aperçu
-            st.subheader("Aperçu")
-            html = f'<div style="font-family:{police}; font-size:24px; line-height:2;">'
-            for char, couleur in texte_colorie:
-                if couleur:
-                    html += f'<span style="color:{couleurs[couleur]}">{char}</span>'
-                else:
-                    html += char
-            st.markdown(html + "</div>", unsafe_allow_html=True)
+            st.subheader("Aperçu du document")
+            html = f'<div class="document-preview" style="font-family:{police}">'
+            for line in texte_colorie:
+                for char, couleur in line:
+                    if char == '\n':
+                        html += '<br>'
+                    elif couleur:
+                        html += f'<span style="color:{couleurs[couleur]}">{char}</span>'
+                    else:
+                        html += char
+            html += "</div>"
+            st.markdown(html, unsafe_allow_html=True)
+
+            # Création document Word
+            doc = creer_document(texte_colorie, police, couleurs)
 
             # Téléchargement
             bio = io.BytesIO()
             doc.save(bio)
             st.download_button(
-                "Télécharger le document",
+                "Télécharger le document Word",
                 bio.getvalue(),
                 file_name="texte_colorie.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
