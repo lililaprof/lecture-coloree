@@ -1,16 +1,10 @@
 import streamlit as st
-import easyocr
-import numpy as np
+import pytesseract
 from PIL import Image
 from docx import Document
 from docx.shared import RGBColor, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
-import json
-import os
-
-# Initialiser le lecteur OCR
-lecteur = easyocr.Reader(['fr'])
 
 # Configuration de la page
 st.set_page_config(
@@ -41,50 +35,18 @@ MOTS_OUTILS_BASE = [
 
 # Polices disponibles
 POLICES = [
-    {'nom': 'Arial', 'affichage': '<span style="font-family:Arial">Arial</span>'},
-    {'nom': 'Comic Sans MS', 'affichage': '<span style="font-family:Comic Sans MS">Comic Sans MS</span>'},
-    {'nom': 'Helvetica', 'affichage': '<span style="font-family:Helvetica">Helvetica</span>'},
-    {'nom': 'OpenDyslexic', 'affichage': '<span style="font-family:OpenDyslexic">OpenDyslexic</span>'},
-    {'nom': 'Belle Allure', 'affichage': '<span style="font-family:Belle Allure">Belle Allure</span>'}
+    'OpenDyslexic',
+    'Quicksand Book',
+    'Belle Allure',
+    'Arial',
+    'Comic Sans MS',
+    'Helvetica'
 ]
 
-# Palettes daltoniennes
-PALETTES = {
-    "Standard": {
-        'voyelles': "#FF0000",  # Rouge
-        'consonnes': "#0000FF",  # Bleu
-        'graphemes': "#008000",  # Vert
-        'muettes': "#808080",    # Gris
-        'mots_outils': "#8B4513" # Marron
-    },
-    "Daltonien (Deutan)": {
-        'voyelles': "#0072B2",  # Bleu
-        'consonnes': "#D55E00",  # Orange
-        'graphemes': "#009E73",  # Vert
-        'muettes': "#CC79A7",    # Rose
-        'mots_outils': "#E69F00" # Jaune
-    },
-    "Daltonien (Protan)": {
-        'voyelles': "#0072B2",
-        'consonnes': "#CC79A7",
-        'graphemes': "#009E73",
-        'muettes': "#F0E442",    # Jaune
-        'mots_outils': "#E69F00"
-    },
-    "Daltonien (Tritan)": {
-        'voyelles': "#0072B2",
-        'consonnes': "#E69F00",
-        'graphemes': "#56B4E9",  # Bleu clair
-        'muettes': "#009E73",    # Vert
-        'mots_outils': "#F0E442"
-    }
-}
-
 def hex_to_rgb(hex_color):
-    """Convertit une couleur hex en RGBColor (corrigé)"""
+    """Convertit une couleur hex en RGB"""
     hex_color = hex_color.lstrip('#')
-    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-    return RGBColor(r, g, b)
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 def detecter_lettre_muette(mot, position):
     if position == len(mot) - 1:
@@ -152,98 +114,126 @@ def ajouter_espaces_entre_mots(texte):
 
 def colorier_texte(texte, mots_outils, couleurs_config):
     resultat_word = []
-    mots_outils_lower = {mot.lower() for mot in mots_outils}
+    mots_outils_lower = [mot.lower() for mot in mots_outils]
+    mots_outils_upper = [mot.upper() for mot in mots_outils]
+    tous_mots_outils = mots_outils + mots_outils_lower + mots_outils_upper
+    
     i = 0
     while i < len(texte):
         char = texte[i]
+        
         if not char.isalpha():
             resultat_word.append((char, None))
             i += 1
             continue
-
+        
         mot_complet, debut_mot, fin_mot = extraire_mot_complet(texte, i)
         position_dans_mot = i - debut_mot
-
-        if mot_complet.lower() in mots_outils_lower:
+        
+        if mot_complet in tous_mots_outils:
             for c in mot_complet:
                 resultat_word.append((c, 'mots_outils'))
             i = fin_mot
             continue
-
+        
         if detecter_lettre_muette(mot_complet, position_dans_mot):
-            for c in mot_complet[position_dans_mot:]:
-                resultat_word.append((c, 'muettes'))
-            i = fin_mot
+            resultat_word.append((char, 'muettes'))
+            i += 1
             continue
-
+        
         trouve = False
-        for son in sorted(sons_complexes, key=len, reverse=True):
-            if i + len(son) <= len(texte) and texte[i:i+len(son)].lower() == son:
-                for c in texte[i:i+len(son)]:
+        for son in sons_complexes:
+            if texte[i:i+len(son)].lower() == son:
+                segment = texte[i:i+len(son)]
+                for c in segment:
                     resultat_word.append((c, 'graphemes'))
                 i += len(son)
                 trouve = True
                 break
-
+        
         if not trouve:
-            for son in sorted(sons_nasals, key=len, reverse=True):
-                if i + len(son) <= len(texte) and texte[i:i+len(son)].lower() == son:
+            for son in sons_nasals:
+                if texte[i:i+len(son)].lower() == son:
                     if est_son_nasal_valide(texte, i, son):
-                        for c in texte[i:i+len(son)]:
+                        segment = texte[i:i+len(son)]
+                        for c in segment:
                             resultat_word.append((c, 'graphemes'))
                         i += len(son)
                         trouve = True
                         break
-
+        
         if not trouve:
             if char.lower() in voyelles:
                 resultat_word.append((char, 'voyelles'))
             else:
                 resultat_word.append((char, 'consonnes'))
             i += 1
-
+    
     return resultat_word
 
-def colorier_graphemes_cibles(texte, graphemes, couleur):
+def colorier_grapheme_unique(texte, grapheme_cible):
     resultat_word = []
+    grapheme_lower = grapheme_cible.lower()
+    
     i = 0
     while i < len(texte):
-        trouve = False
-        for grapheme in sorted(graphemes, key=len, reverse=True):
-            if i + len(grapheme) <= len(texte) and texte[i:i+len(grapheme)].lower() == grapheme.lower():
-                for c in texte[i:i+len(grapheme)]:
-                    resultat_word.append((c, couleur))
-                i += len(grapheme)
-                trouve = True
-                break
-        if not trouve:
+        if texte[i:i+len(grapheme_cible)].lower() == grapheme_lower:
+            segment = texte[i:i+len(grapheme_cible)]
+            for c in segment:
+                resultat_word.append((c, 'teal'))
+            i += len(grapheme_cible)
+        else:
             resultat_word.append((texte[i], 'black'))
             i += 1
+    
     return resultat_word
 
-def creer_word(texte, police, couleurs_config, type_doc, graphemes_cibles=None, couleur_graphemes="#069494"):
+def creer_word(texte_minuscule, texte_majuscule, police, couleurs_config, type_doc):
     doc = Document()
+    
+    # Convertir les couleurs hex en RGB
     couleurs_rgb = {}
-
-    # Conversion des couleurs
     for key, hex_val in couleurs_config.items():
-        couleurs_rgb[key] = hex_to_rgb(hex_val)
-    couleurs_rgb['teal'] = hex_to_rgb(couleur_graphemes)
+        r, g, b = hex_to_rgb(hex_val)
+        couleurs_rgb[key] = RGBColor(r, g, b)
+    
+    # Ajouter couleurs fixes
+    couleurs_rgb['teal'] = RGBColor(6, 148, 148)
     couleurs_rgb['black'] = RGBColor(0, 0, 0)
-
+    
     if type_doc == 'complet':
-        titre = 'Code couleur complet'
+        titre_page1 = 'CAPITALES - Code couleur complet'
+        titre_page2 = 'minuscules - Code couleur complet'
     else:
-        titre = f"Graphèmes cibles : {', '.join(graphemes_cibles)}"
-
-    para = doc.add_paragraph()
-    for char, couleur in texte:
-        run = para.add_run(char)
+        titre_page1 = 'CAPITALES - Graphème ciblé'
+        titre_page2 = 'minuscules - Graphème ciblé'
+    
+    # PAGE 1 : CAPITALES
+    titre_maj = doc.add_heading(titre_page1, level=1)
+    titre_maj.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    para_maj = doc.add_paragraph()
+    for char, couleur in texte_majuscule:
+        run = para_maj.add_run(char)
         run.font.size = Pt(25)
         run.font.name = police
         if couleur and couleur in couleurs_rgb:
             run.font.color.rgb = couleurs_rgb[couleur]
-
+    
+    doc.add_page_break()
+    
+    # PAGE 2 : minuscules
+    titre_min = doc.add_heading(titre_page2, level=1)
+    titre_min.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    para_min = doc.add_paragraph()
+    for char, couleur in texte_minuscule:
+        run = para_min.add_run(char)
+        run.font.size = Pt(25)
+        run.font.name = police
+        if couleur and couleur in couleurs_rgb:
+            run.font.color.rgb = couleurs_rgb[couleur]
+    
     return doc
 
 # Interface Streamlit
@@ -254,50 +244,52 @@ st.markdown("---")
 # Sidebar pour les paramètres
 with st.sidebar:
     st.header("⚙️ Paramètres")
-
-    # Choix de la casse
-    type_casse = st.radio(
-        "📄 Casse du document final",
-        ["Minuscules", "Majuscules"],
-        horizontal=True
+    
+    # Choix de la police
+    police = st.selectbox("📝 Police d'écriture", POLICES, index=1)
+    
+    st.markdown("---")
+    
+    # Personnalisation des couleurs
+    st.subheader("🎨 Personnaliser les couleurs")
+    
+    col_voyelles = st.color_picker("Voyelles", "#FF0000")
+    col_consonnes = st.color_picker("Consonnes", "#0000FF")
+    col_graphemes = st.color_picker("Graphèmes complexes", "#008000")
+    col_muettes = st.color_picker("Lettres muettes", "#808080")
+    col_mots_outils = st.color_picker("Mots-outils", "#8B4513")
+    
+    couleurs_config = {
+        'voyelles': col_voyelles,
+        'consonnes': col_consonnes,
+        'graphemes': col_graphemes,
+        'muettes': col_muettes,
+        'mots_outils': col_mots_outils
+    }
+    
+    st.markdown("---")
+    
+    # Mots-outils
+    st.subheader("📝 Mots-outils")
+    
+    utiliser_base = st.checkbox("Utiliser la liste de base", value=True)
+    
+    if utiliser_base:
+        with st.expander("Voir la liste de base"):
+            st.write(", ".join(MOTS_OUTILS_BASE))
+    
+    mots_perso = st.text_area(
+        "Ajouter vos mots (séparés par des virgules)",
+        placeholder="Exemple: car, mais, donc, or..."
     )
-
-    # Choix de la police (menu déroulant stylisé)
-    st.subheader("📝 Police d'écriture")
-    police_selectionnee = st.selectbox(
-        "",
-        POLICES,
-        format_func=lambda x: x['affichage'],
-        index=0,
-        key="police_select"
-    )
-    police = police_selectionnee['nom']
-
-    # Palette de couleurs
-    st.subheader("🎨 Couleurs")
-    palette = st.selectbox(
-        "Palette",
-        list(PALETTES.keys())
-    )
-
-    # Choix des couleurs personnalisées
-    if palette == "Standard":
-        st.markdown("**Personnaliser les couleurs**")
-        col_voyelles = st.color_picker("Voyelles", PALETTES["Standard"]['voyelles'])
-        col_consonnes = st.color_picker("Consonnes", PALETTES["Standard"]['consonnes'])
-        col_graphemes = st.color_picker("Graphèmes complexes", PALETTES["Standard"]['graphemes'])
-        col_muettes = st.color_picker("Lettres muettes", PALETTES["Standard"]['muettes'])
-        col_mots_outils = st.color_picker("Mots-outils", PALETTES["Standard"]['mots_outils'])
-
-        couleurs_config = {
-            'voyelles': col_voyelles,
-            'consonnes': col_consonnes,
-            'graphemes': col_graphemes,
-            'muettes': col_muettes,
-            'mots_outils': col_mots_outils
-        }
-    else:
-        couleurs_config = PALETTES[palette]
+    
+    # Construire la liste finale
+    mots_outils_finaux = []
+    if utiliser_base:
+        mots_outils_finaux.extend(MOTS_OUTILS_BASE)
+    if mots_perso:
+        mots_ajout = [m.strip() for m in mots_perso.split(',') if m.strip()]
+        mots_outils_finaux.extend(mots_ajout)
 
 # Zone principale
 col1, col2 = st.columns([1, 1])
@@ -308,102 +300,71 @@ with col1:
         "Choisissez une image (PNG, JPG, JPEG)",
         type=['png', 'jpg', 'jpeg']
     )
-
+    
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Image uploadée", use_column_width=True)
-        image_np = np.array(image)  # Convertir en tableau numpy pour easyocr
 
 with col2:
-    st.header("🎯 Graphèmes cibles")
-    graphemes_cibles = st.text_area(
-        "Graphèmes cibles (un par ligne)",
-        placeholder="Exemple:\nou\nch\nain"
+    st.header("🎯 Graphème ciblé")
+    grapheme = st.text_input(
+        "Pour le document avec un seul graphème coloré",
+        placeholder="Exemple: ou, ch, ain..."
     )
-    graphemes_cibles = [g.strip() for g in graphemes_cibles.split('\n') if g.strip()]
+    
+    st.info("💡 Ce graphème sera coloré en bleu canard (RGB: 6, 148, 148) dans le second document")
 
-    couleur_graphemes = st.color_picker("Couleur des graphèmes cibles", "#069494")
-
-# Mots-outils
-mots_outils_finaux = MOTS_OUTILS_BASE.copy()
-mots_perso = st.text_area(
-    "📝 Ajouter vos mots-outils (séparés par des virgules)",
-    placeholder="Exemple: car, mais, donc, or..."
-)
-if mots_perso:
-    mots_ajout = [m.strip() for m in mots_perso.split(',') if m.strip()]
-    mots_outils_finaux.extend(mots_ajout)
+st.markdown("---")
 
 # Bouton de génération
 if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width=True):
     if not uploaded_file:
         st.error("❌ Veuillez uploader une image d'abord !")
-    elif not graphemes_cibles:
-        st.error("❌ Veuillez indiquer au moins un graphème cible !")
+    elif not grapheme:
+        st.error("❌ Veuillez indiquer un graphème ciblé !")
     else:
         with st.spinner("⏳ Extraction et traitement en cours..."):
             try:
-                resultat_ocr = lecteur.readtext(image_np, detail=0)
-                texte_brut = " ".join(resultat_ocr)
-
-                if not texte_brut.strip():
-                    st.error("❌ Aucun texte détecté dans l'image. Essayez une autre image ou améliorez la qualité.")
-                    st.stop()
-
+                # Extraire le texte
+                texte_brut = pytesseract.image_to_string(image, lang='eng')
+                
+                # Traiter le texte
                 texte_brut = remplacer_separateurs(texte_brut)
-                texte_travail = ajouter_espaces_entre_mots(texte_brut)
-
-                if type_casse == "Majuscules":
-                    texte_travail = texte_travail.upper()
-                else:
-                    texte_travail = texte_travail.lower()
-
+                texte_minuscule = texte_brut.lower()
+                texte_majuscule = texte_brut.upper()
+                texte_minuscule = ajouter_espaces_entre_mots(texte_minuscule)
+                texte_majuscule = ajouter_espaces_entre_mots(texte_majuscule)
+                
                 st.success("✅ Texte extrait avec succès !")
-
+                
                 with st.expander("👀 Voir le texte extrait"):
-                    st.text(texte_travail)
-
+                    st.text(texte_brut)
+                
                 # Document 1 : Code complet
                 st.info("📄 Génération du document avec code couleur complet...")
-                texte_complet = colorier_texte(texte_travail, mots_outils_finaux, couleurs_config)
-                doc_complet = creer_word(texte_complet, police, couleurs_config, 'complet')
-
+                texte_min_complet = colorier_texte(texte_minuscule, mots_outils_finaux, couleurs_config)
+                texte_maj_complet = colorier_texte(texte_majuscule, mots_outils_finaux, couleurs_config)
+                doc_complet = creer_word(texte_min_complet, texte_maj_complet, police, couleurs_config, 'complet')
+                
                 buffer1 = io.BytesIO()
                 doc_complet.save(buffer1)
                 buffer1.seek(0)
-
-                # Document 2 : Graphèmes cibles
-                st.info(f"📄 Génération du document avec les graphèmes cibles...")
-                texte_graphemes = colorier_graphemes_cibles(texte_travail, graphemes_cibles, "teal")
-                doc_graphemes = creer_word(texte_graphemes, police, {}, 'graphemes', graphemes_cibles, couleur_graphemes)
-
+                
+                # Document 2 : Graphème ciblé
+                st.info(f"📄 Génération du document avec le graphème '{grapheme}'...")
+                texte_min_grapheme = colorier_grapheme_unique(texte_minuscule, grapheme)
+                texte_maj_grapheme = colorier_grapheme_unique(texte_majuscule, grapheme)
+                doc_grapheme = creer_word(texte_min_grapheme, texte_maj_grapheme, police, {}, 'grapheme')
+                
                 buffer2 = io.BytesIO()
-                doc_graphemes.save(buffer2)
+                doc_grapheme.save(buffer2)
                 buffer2.seek(0)
-
-                # Aperçu
-                st.subheader("👀 Aperçu du document")
-                html_aperçu = f"""
-                <style>
-                .voyelles {{ color: {couleurs_config['voyelles']}; }}
-                .consonnes {{ color: {couleurs_config['consonnes']}; }}
-                .graphemes {{ color: {couleurs_config['graphemes']}; }}
-                .muettes {{ color: {couleurs_config['muettes']}; }}
-                .mots_outils {{ color: {couleurs_config['mots_outils']}; }}
-                .teal {{ color: {couleur_graphemes}; }}
-                </style>
-                """
-                for char, couleur in texte_complet:
-                    if couleur:
-                        html_aperçu += f"<span class='{couleur}'>{char}</span>"
-                    else:
-                        html_aperçu += char
-                st.markdown(html_aperçu, unsafe_allow_html=True)
-
-                # Téléchargements
+                
                 st.success("🎉 Documents générés avec succès !")
-
+                
+                # Téléchargements
                 col_dl1, col_dl2 = st.columns(2)
+                
                 with col_dl1:
                     st.download_button(
                         label="📥 Télécharger - Code complet",
@@ -411,15 +372,15 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                         file_name="texte_code_complet.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
-
+                
                 with col_dl2:
                     st.download_button(
-                        label=f"📥 Télécharger - Graphèmes cibles",
+                        label=f"📥 Télécharger - Graphème '{grapheme}'",
                         data=buffer2,
-                        file_name=f"texte_graphemes_cibles.docx",
+                        file_name=f"texte_grapheme_{grapheme}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
-
+                
             except Exception as e:
                 st.error(f"❌ Erreur : {str(e)}")
 
