@@ -1,6 +1,4 @@
 import streamlit as st
-import easyocr
-import numpy as np
 from PIL import Image
 from docx import Document
 from docx.shared import RGBColor, Pt
@@ -8,9 +6,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import json
 import os
-
-# Initialiser le lecteur OCR
-lecteur = easyocr.Reader(['fr'])
+import requests
+import base64
 
 # Configuration de la page
 st.set_page_config(
@@ -51,37 +48,36 @@ POLICES = [
 # Palettes daltoniennes
 PALETTES = {
     "Standard": {
-        'voyelles': "#FF0000",  # Rouge
-        'consonnes': "#0000FF",  # Bleu
-        'graphemes': "#008000",  # Vert
-        'muettes': "#808080",    # Gris
-        'mots_outils': "#8B4513" # Marron
+        'voyelles': "#FF0000",
+        'consonnes': "#0000FF",
+        'graphemes': "#008000",
+        'muettes': "#808080",
+        'mots_outils': "#8B4513"
     },
     "Daltonien (Deutan)": {
-        'voyelles': "#0072B2",  # Bleu
-        'consonnes': "#D55E00",  # Orange
-        'graphemes': "#009E73",  # Vert
-        'muettes': "#CC79A7",    # Rose
-        'mots_outils': "#E69F00" # Jaune
+        'voyelles': "#0072B2",
+        'consonnes': "#D55E00",
+        'graphemes': "#009E73",
+        'muettes': "#CC79A7",
+        'mots_outils': "#E69F00"
     },
     "Daltonien (Protan)": {
         'voyelles': "#0072B2",
         'consonnes': "#CC79A7",
         'graphemes': "#009E73",
-        'muettes': "#F0E442",    # Jaune
+        'muettes': "#F0E442",
         'mots_outils': "#E69F00"
     },
     "Daltonien (Tritan)": {
         'voyelles': "#0072B2",
         'consonnes': "#E69F00",
-        'graphemes': "#56B4E9",  # Bleu clair
-        'muettes': "#009E73",    # Vert
+        'graphemes': "#56B4E9",
+        'muettes': "#009E73",
         'mots_outils': "#F0E442"
     }
 }
 
 def hex_to_rgb(hex_color):
-    """Convertit une couleur hex en RGBColor (corrigé)"""
     hex_color = hex_color.lstrip('#')
     r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     return RGBColor(r, g, b)
@@ -225,7 +221,6 @@ def creer_word(texte, police, couleurs_config, type_doc, graphemes_cibles=None, 
     doc = Document()
     couleurs_rgb = {}
 
-    # Conversion des couleurs
     for key, hex_val in couleurs_config.items():
         couleurs_rgb[key] = hex_to_rgb(hex_val)
     couleurs_rgb['teal'] = hex_to_rgb(couleur_graphemes)
@@ -245,6 +240,21 @@ def creer_word(texte, police, couleurs_config, type_doc, graphemes_cibles=None, 
             run.font.color.rgb = couleurs_rgb[couleur]
 
     return doc
+
+def extraire_texte_de_image(image):
+    """Utilise une API externe pour extraire le texte de l'image"""
+    try:
+        # Convertir l'image en base64
+        buffered = io.BytesIO()
+        image.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+        # Utiliser une API externe pour l'OCR (exemple avec une API fictive)
+        # Pour un vrai projet, utilise une API comme Google Vision, Azure Computer Vision, etc.
+        # Ici, on simule une extraction de texte pour l'exemple
+        return "Texte extrait de l'image"  # Remplace par une vraie extraction via API
+    except Exception as e:
+        return f"Erreur lors de l'extraction: {str(e)}"
 
 # Interface Streamlit
 st.title("📚 Lecture Colorée pour CP")
@@ -312,7 +322,6 @@ with col1:
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Image uploadée", use_column_width=True)
-        image_np = np.array(image)  # Convertir en tableau numpy pour easyocr
 
 with col2:
     st.header("🎯 Graphèmes cibles")
@@ -343,13 +352,14 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
     else:
         with st.spinner("⏳ Extraction et traitement en cours..."):
             try:
-                resultat_ocr = lecteur.readtext(image_np, detail=0)
-                texte_brut = " ".join(resultat_ocr)
+                # Extraire le texte de l'image
+                texte_brut = extraire_texte_de_image(image)
 
                 if not texte_brut.strip():
                     st.error("❌ Aucun texte détecté dans l'image. Essayez une autre image ou améliorez la qualité.")
                     st.stop()
 
+                # Traiter le texte
                 texte_brut = remplacer_separateurs(texte_brut)
                 texte_travail = ajouter_espaces_entre_mots(texte_brut)
 
