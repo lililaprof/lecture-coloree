@@ -311,14 +311,17 @@ with col2:
     
     st.markdown("---")
     
-    creer_doc_cible = st.checkbox("Créer un document avec graphèmes ciblés", value=False)
+    st.subheader("🎯 Document avec graphèmes ciblés")
+    creer_doc_cible = st.toggle("Activer le document avec graphèmes ciblés", value=False)
     
     if creer_doc_cible:
+        st.success("✨ Un second document sera créé avec les graphèmes ciblés en couleur !")
         graphemes_input = st.text_input(
-            "Graphèmes à cibler (séparés par des virgules)",
-            placeholder="Exemple: ou, ch, ain"
+            "🔤 Graphèmes à cibler (séparés par des virgules)",
+            placeholder="Exemple: ou, ch, ain",
+            help="Les graphèmes seront colorés, le reste du texte sera en noir"
         )
-        couleur_cible = st.color_picker("Couleur des graphèmes ciblés", "#069494")
+        couleur_cible = st.color_picker("🎨 Couleur des graphèmes ciblés", "#069494")
 
 st.markdown("---")
 
