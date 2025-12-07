@@ -107,6 +107,22 @@ def remplacer_separateurs(texte):
             i += 1
     return resultat
 
+def mettre_majuscules_phrases(texte):
+    """Met une majuscule au début de chaque phrase"""
+    resultat = []
+    debut_phrase = True
+    
+    for char in texte:
+        if debut_phrase and char.isalpha():
+            resultat.append(char.upper())
+            debut_phrase = False
+        else:
+            resultat.append(char)
+            if char in '.!?':
+                debut_phrase = True
+    
+    return ''.join(resultat)
+
 def ajouter_espaces_entre_mots(texte):
     resultat = ""
     for i, char in enumerate(texte):
@@ -405,6 +421,7 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                 
                 if casse == 'Minuscules':
                     texte_final = texte_brut.lower()
+                    texte_final = mettre_majuscules_phrases(texte_final)
                 else:
                     texte_final = texte_brut.upper()
                 
