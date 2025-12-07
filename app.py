@@ -216,7 +216,7 @@ def colorier_graphemes_cibles(texte, graphemes_cibles, couleur_cible):
     
     return resultat_word
 
-def creer_word(texte_traite, police, couleurs_config, casse):
+def creer_word(texte_traite, police, couleurs_config, casse, taille_pt=25):
     doc = Document()
     
     couleurs_rgb = {}
@@ -232,7 +232,7 @@ def creer_word(texte_traite, police, couleurs_config, casse):
     
     for char, couleur in texte_traite:
         run = para.add_run(char)
-        run.font.size = Pt(25)
+        run.font.size = Pt(taille_pt)
         run.font.name = police
         if couleur and couleur in couleurs_rgb:
             run.font.color.rgb = couleurs_rgb[couleur]
@@ -298,9 +298,12 @@ st.markdown("---")
 
 # Sidebar
 with st.sidebar:
-    st.header("⚙️ Paramètres")
+    st.header("⚙️ Paramètres généraux")
     
     police = st.selectbox("📝 Police d'écriture", POLICES, index=0)
+    
+    taille_police = st.slider("📏 Taille de la police", min_value=12, max_value=40, value=25, step=1,
+                              help="Taille en points (pt) pour tous les documents")
     
     st.markdown("---")
     st.subheader("🔍 Qualité de lecture (OCR)")
@@ -378,19 +381,30 @@ with col1:
 with col2:
     st.header("⚙️ Options de génération")
     
-    casse = st.radio("Casse du document", ['Minuscules', 'Majuscules'], horizontal=True)
+    casse = st.radio("📝 Casse du texte", ['Minuscules', 'Majuscules'], horizontal=True)
     
     st.markdown("---")
+    st.subheader("📄 Documents à générer")
+    st.markdown("*Activez les documents que vous souhaitez créer*")
     
-    st.subheader("🎯 Document avec graphèmes ciblés")
-    creer_doc_cible = st.toggle("Activer le document avec graphèmes ciblés", value=False)
+    # Option 1 : Texte simple
+    creer_texte_simple = st.toggle("📃 Texte simple (sans couleur)", value=False,
+                                    help="Génère un document Word avec le texte extrait, sans code couleur")
+    
+    # Option 2 : Texte avec code couleur complet
+    creer_texte_colore = st.toggle("🎨 Texte avec code couleur complet", value=True,
+                                    help="Génère un document avec voyelles, consonnes, graphèmes, etc. en couleur")
+    
+    # Option 3 : Graphèmes ciblés
+    creer_doc_cible = st.toggle("🎯 Graphèmes ciblés", value=False,
+                                 help="Génère un document avec uniquement certains graphèmes en couleur")
     
     if creer_doc_cible:
-        st.success("✨ Un second document sera créé avec les graphèmes ciblés en couleur !")
+        st.success("✨ Un document avec graphèmes ciblés sera créé !")
         graphemes_input = st.text_input(
             "🔤 Graphèmes à cibler (séparés par des virgules)",
             placeholder="Exemple: ou, ch, ain",
-            help="Les graphèmes seront colorés, le reste du texte sera en noir"
+            help="Ces graphèmes seront colorés, le reste du texte sera en noir"
         )
         couleur_cible = st.color_picker("🎨 Couleur des graphèmes ciblés", "#069494")
 
@@ -430,31 +444,48 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                 with st.expander("👀 Voir le texte extrait"):
                     st.text(texte_brut)
                 
-                # Document 1 : Code complet
-                st.info("📄 Génération du document avec code couleur complet...")
-                texte_colorie = colorier_texte(texte_final, mots_outils_finaux, couleurs_config, activer_muettes)
+                # Document 1 : Texte simple (optionnel)
+                if creer_texte_simple:
+                    st.info("📄 Génération du document texte simple...")
+                    
+                    texte_simple = [(char, None) for char in texte_final]
+                    doc_simple = creer_word(texte_simple, police, {}, casse, taille_pt=taille_police)
+                    
+                    buffer_simple = io.BytesIO()
+                    doc_simple.save(buffer_simple)
+                    buffer_simple.seek(0)
+                    
+                    st.download_button(
+                        label="📥 Télécharger - Texte simple",
+                        data=buffer_simple,
+                        file_name=f"texte_simple_{casse.lower()}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
                 
-                # Prévisualisation
-                st.subheader("👁️ Aperçu du document")
-                preview_html = generer_preview_html(texte_colorie, couleurs_config, police)
-                st.markdown(preview_html, unsafe_allow_html=True)
+                # Document 2 : Code complet (optionnel)
+                if creer_texte_colore:
+                    st.info("📄 Génération du document avec code couleur complet...")
+                    texte_colorie = colorier_texte(texte_final, mots_outils_finaux, couleurs_config, activer_muettes)
                 
-                doc_complet = creer_word(texte_colorie, police, couleurs_config, casse)
+                    # Prévisualisation
+                    st.subheader("👁️ Aperçu du document coloré")
+                    preview_html = generer_preview_html(texte_colorie, couleurs_config, police)
+                    st.markdown(preview_html, unsafe_allow_html=True)
+                    
+                    doc_complet = creer_word(texte_colorie, police, couleurs_config, casse, taille_pt=taille_police)
+                    
+                    buffer1 = io.BytesIO()
+                    doc_complet.save(buffer1)
+                    buffer1.seek(0)
+                    
+                    st.download_button(
+                        label="📥 Télécharger - Code couleur complet",
+                        data=buffer1,
+                        file_name=f"texte_code_complet_{casse.lower()}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
                 
-                buffer1 = io.BytesIO()
-                doc_complet.save(buffer1)
-                buffer1.seek(0)
-                
-                st.success("🎉 Document généré avec succès !")
-                
-                st.download_button(
-                    label="📥 Télécharger - Code couleur complet",
-                    data=buffer1,
-                    file_name=f"texte_code_complet_{casse.lower()}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-                
-                # Document 2 : Graphèmes ciblés (optionnel)
+                # Document 3 : Graphèmes ciblés (optionnel)
                 if creer_doc_cible and graphemes_input:
                     graphemes_cibles = [g.strip() for g in graphemes_input.split(',') if g.strip()]
                     
@@ -469,7 +500,7 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                         preview_html_cible = generer_preview_html(texte_cible, couleurs_cible, police)
                         st.markdown(preview_html_cible, unsafe_allow_html=True)
                         
-                        doc_cible = creer_word(texte_cible, police, couleurs_cible, casse)
+                        doc_cible = creer_word(texte_cible, police, couleurs_cible, casse, taille_pt=taille_police)
                         
                         buffer2 = io.BytesIO()
                         doc_cible.save(buffer2)
@@ -481,6 +512,12 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                             file_name=f"texte_graphemes_cibles_{casse.lower()}.docx",
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         )
+                
+                # Message de succès global
+                if creer_texte_simple or creer_texte_colore or creer_doc_cible:
+                    st.success("🎉 Tous les documents ont été générés avec succès !")
+                else:
+                    st.warning("⚠️ Aucun document sélectionné. Activez au moins une option !")
                 
             except Exception as e:
                 st.error(f"❌ Erreur : {str(e)}")
