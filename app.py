@@ -24,7 +24,9 @@ lettres_muettes_fin = ['s', 't', 'd', 'p', 'x', 'z']
 # Listes de mots-outils par manuel
 LISTES_MANUELS = {
     'Ma liste perso': [],
-    'Taoki': ['est', 'et', 'un', 'une', 'le', 'la', 'les', 'de', 'il', 'elle', 'dans', 'sur', 'avec'],
+    'Noisette' : []
+    'Fil et lulu' : ['un', 'est'] 
+    'Taoki ancienne version': ['il y a', 'il', 'le', 'de', 'sans', 'dans', 'une', 'c est', 'sur', 'aussi', 'dans', 'mais', 'avec', 'des','en', 'et', 'ne', 'pas', 'ses', 'son', 'car', 'les', 'du', 's est','que', 'qui', 'au', 'même', 'chez', 'tous', 'très', 'tout', 'ont', 'quelle', 'toute', 'entre', 'j ai', 'bien', 'tu es', 'assez', 'leurs', 'cette', 'près'],
     'Pilotis': ['le', 'la', 'les', 'un', 'une', 'des', 'il', 'elle', 'est', 'dans', 'sur', 'avec', 'pour'],
     'Léo et Léa': ['le', 'la', 'l', 'un', 'une', 'et', 'est', 'il', 'elle', 'je', 'tu', 'de', 'du'],
     'Base commune': ['est', 'et', 'un', 'une', 'le', 'la', 'les', 'de', 'du', 'des', 'dans', 'sur', 
@@ -207,9 +209,57 @@ def creer_word(texte_traite, police, couleurs_config, casse):
     
     return doc
 
+<<<<<<< HEAD
+def extraire_texte_de_image(image):
+    try:
+        # Convertir l'image en niveaux de gris
+        img_array = np.array(image.convert('L'))
+
+        # Appliquer un seuil binaire pour améliorer le contraste
+        _, img_array = cv2.threshold(img_array, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Utiliser pytesseract pour extraire le texte
+        texte = pytesseract.image_to_string(img_array, lang='fra')
+
+        return texte
+    except Exception as e:
+        return f"Erreur lors de l'extraction: {str(e)}"
+
+=======
+>>>>>>> 12014b1e43177ccfdeffddb38325b06c1493ebbb
 # Interface Streamlit
 st.title("📚 Lecture Colorée pour CP")
 st.markdown("**Application d'adaptation de textes pour enfants dys et TSA**")
+st.markdown("*Pour les enseignants et les parents*")
+
+# Description de l'application
+st.info("""
+📖 **Comment ça marche ?**
+1. Uploadez une photo/scan de votre texte de lecture
+2. Personnalisez les couleurs et choisissez votre liste de mots-outils
+3. Choisissez majuscules ou minuscules
+4. Générez et téléchargez votre document Word coloré !
+
+🎨 **Code couleur :** 🔴 Voyelles • 🔵 Consonnes • 🟢 Graphèmes complexes • ⚫ Lettres muettes • 🟤 Mots-outils
+
+🎯 **Option graphèmes ciblés :** Créez un second document avec uniquement le(s) son(s) travaillé(s) dans votre leçon en couleur, le reste en noir
+""")
+
+with st.expander("ℹ️ En savoir plus sur l'application"):
+    st.markdown("""
+    ### Pourquoi cette application ?
+    Cette application a été créée par une enseignante de CP pour faciliter l'adaptation des textes pour les élèves dys et TSA.
+    
+    ### Fonctionnalités
+    - ✅ Code couleur basé sur la phonétique
+    - ✅ Listes de mots-outils par manuel (Taoki, Pilotis, Léo et Léa...)
+    - ✅ Détection des lettres muettes
+    - ✅ Espacement entre les mots pour faciliter la lecture
+    - ✅ Export en Word avec police adaptée
+    
+    *Application gratuite et open source* 💚
+    """)
+
 st.markdown("---")
 
 # Sidebar
