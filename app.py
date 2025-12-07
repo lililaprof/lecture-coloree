@@ -1,5 +1,5 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageOps, ImageFilter
 import pytesseract
 from docx import Document
 from docx.shared import RGBColor, Pt
@@ -38,6 +38,22 @@ POLICES = ['Arial', 'Comic Sans MS', 'OpenDyslexic', 'Quicksand Book', 'Belle Al
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return RGBColor(*tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)))
+
+def pretraiter_image(image, qualite_ocr):
+    """Prépare l'image pour une meilleure lecture par l'OCR"""
+    img = image.copy()
+    
+    # Convertir en niveaux de gris
+    img = ImageOps.grayscale(img)
+    
+    # Si qualité maximale, appliquer des filtres
+    if qualite_ocr == "Maximale":
+        # Réduire le bruit
+        img = img.filter(ImageFilter.MedianFilter(size=3))
+        # Améliorer le contraste (binarisation)
+        img = img.point(lambda p: 255 if p > 180 else 0)
+    
+    return img
 
 def detecter_lettre_muette(mot, position):
     if position == len(mot) - 1:
@@ -207,6 +223,27 @@ def creer_word(texte_traite, police, couleurs_config, casse):
     
     return doc
 
+def generer_preview_html(texte_traite, couleurs_config, police):
+    """Génère un aperçu HTML du texte coloré"""
+    mapping = {
+        'voyelles': couleurs_config.get('voyelles', '#FF0000'),
+        'consonnes': couleurs_config.get('consonnes', '#0000FF'),
+        'graphemes': couleurs_config.get('graphemes', '#008000'),
+        'muettes': couleurs_config.get('muettes', '#808080'),
+        'mots_outils': couleurs_config.get('mots_outils', '#8B4513'),
+        'cible': couleurs_config.get('cible', '#069494'),
+        'black': '#000000',
+        None: '#000000'
+    }
+    
+    html = f"<div style='font-family:{police}; font-size:20px; line-height:1.8; padding:20px; background:#f9f9f9; border-radius:10px;'>"
+    for char, couleur in texte_traite:
+        color = mapping.get(couleur, '#000000')
+        safe_char = char.replace(' ', '&nbsp;').replace('\n', '<br/>')
+        html += f"<span style='color:{color};'>{safe_char}</span>"
+    html += "</div>"
+    return html
+
 # Interface Streamlit
 st.title("📚 Lecture Colorée pour CP")
 st.markdown("**Application d'adaptation de textes pour enfants dys et TSA**")
@@ -236,6 +273,7 @@ with st.expander("ℹ️ En savoir plus sur l'application"):
     - ✅ Détection des lettres muettes
     - ✅ Espacement entre les mots pour faciliter la lecture
     - ✅ Export en Word avec police adaptée
+    - ✅ Prévisualisation avant téléchargement
     
     *Application gratuite et open source* 💚
     """)
@@ -247,6 +285,23 @@ with st.sidebar:
     st.header("⚙️ Paramètres")
     
     police = st.selectbox("📝 Police d'écriture", POLICES, index=0)
+    
+    st.markdown("---")
+    st.subheader("🔍 Qualité de lecture (OCR)")
+    
+    qualite_ocr = st.select_slider(
+        "Choisissez la qualité",
+        options=["Standard", "Bonne", "Maximale"],
+        value="Bonne",
+        help="Standard = lecture rapide | Bonne = recommandé | Maximale = pour images de mauvaise qualité"
+    )
+    
+    st.info("""
+    💡 **Aide au choix :**
+    - **Standard** : Pour photos nettes de bonne qualité
+    - **Bonne** : Recommandé pour la plupart des cas
+    - **Maximale** : Si votre photo est floue ou mal éclairée
+    """)
     
     st.markdown("---")
     st.subheader("🎨 Couleurs - Document complet")
@@ -331,7 +386,19 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
     else:
         with st.spinner("⏳ Extraction et traitement en cours..."):
             try:
-                texte_brut = pytesseract.image_to_string(image, lang='fra')
+                # Prétraiter l'image selon la qualité choisie
+                image_pretrait = pretraiter_image(image, qualite_ocr)
+                
+                # Configuration OCR selon la qualité
+                if qualite_ocr == "Standard":
+                    config_ocr = '--psm 6 -l fra'
+                elif qualite_ocr == "Bonne":
+                    config_ocr = '--psm 6 -l fra'
+                else:  # Maximale
+                    config_ocr = '--psm 3 -l fra'
+                
+                # Extraction du texte
+                texte_brut = pytesseract.image_to_string(image_pretrait, config=config_ocr)
                 
                 texte_brut = remplacer_separateurs(texte_brut)
                 texte_brut = ajouter_espaces_entre_mots(texte_brut)
@@ -349,6 +416,12 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                 # Document 1 : Code complet
                 st.info("📄 Génération du document avec code couleur complet...")
                 texte_colorie = colorier_texte(texte_final, mots_outils_finaux, couleurs_config, activer_muettes)
+                
+                # Prévisualisation
+                st.subheader("👁️ Aperçu du document")
+                preview_html = generer_preview_html(texte_colorie, couleurs_config, police)
+                st.markdown(preview_html, unsafe_allow_html=True)
+                
                 doc_complet = creer_word(texte_colorie, police, couleurs_config, casse)
                 
                 buffer1 = io.BytesIO()
@@ -373,6 +446,12 @@ if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width
                         
                         couleurs_cible = {'cible': couleur_cible, 'black': '#000000'}
                         texte_cible = colorier_graphemes_cibles(texte_final, graphemes_cibles, couleur_cible)
+                        
+                        # Prévisualisation graphèmes ciblés
+                        st.subheader("👁️ Aperçu graphèmes ciblés")
+                        preview_html_cible = generer_preview_html(texte_cible, couleurs_cible, police)
+                        st.markdown(preview_html_cible, unsafe_allow_html=True)
+                        
                         doc_cible = creer_word(texte_cible, police, couleurs_cible, casse)
                         
                         buffer2 = io.BytesIO()
