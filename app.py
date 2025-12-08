@@ -383,34 +383,33 @@ with tab2:
 
 st.markdown("---")
 
-# Options de génération en 3 colonnes
+# Options de génération empilées verticalement
 st.header("📄 Documents à générer")
+st.markdown("*Activez les documents que vous souhaitez créer*")
 
-col_simple, col_colore, col_cible = st.columns(3)
+# OPTION 1 : Texte simple
+st.markdown("### 📃 Texte simple")
+creer_texte_simple = st.toggle("Activer le document texte simple", key="toggle_simple", value=False)
 
-# COLONNE 1 : Texte simple
-with col_simple:
-    st.markdown("### 📃 Texte simple")
-    creer_texte_simple = st.toggle("Activer", key="toggle_simple", value=False)
+if creer_texte_simple:
+    col1, col2 = st.columns(2)
     
-    if creer_texte_simple:
-        st.markdown("**Options :**")
-        simple_graphemes = st.checkbox("Graphèmes en vert", key="simple_graph")
-        simple_mots = st.checkbox("Mots-outils en marron", key="simple_mots")
-        
+    with col1:
+        simple_graphemes = st.checkbox("Colorer les graphèmes complexes (ou, ch, ain...)", key="simple_graph")
         if simple_graphemes:
-            col_graphemes_simple = st.color_picker("Couleur graphèmes", "#008000", key="col_graph_simple")
+            col_graphemes_simple = st.color_picker("Couleur des graphèmes", "#008000", key="col_graph_simple")
         else:
             col_graphemes_simple = "#008000"
-            
+    
+    with col2:
+        simple_mots = st.checkbox("Colorer les mots-outils", key="simple_mots")
         if simple_mots:
-            col_mots_simple = st.color_picker("Couleur mots-outils", "#8B4513", key="col_mots_simple")
-            
-            manuel_simple = st.selectbox("Liste", list(LISTES_MANUELS.keys()), key="manuel_simple")
+            col_mots_simple = st.color_picker("Couleur des mots-outils", "#8B4513", key="col_mots_simple")
+            manuel_simple = st.selectbox("Liste de mots-outils", list(LISTES_MANUELS.keys()), key="manuel_simple")
             mots_base_simple = LISTES_MANUELS[manuel_simple].copy()
             
             if manuel_simple == 'Ma liste perso':
-                mots_perso_simple = st.text_area("Vos mots", "", key="perso_simple", 
+                mots_perso_simple = st.text_area("Vos mots (séparés par des virgules)", "", key="perso_simple", 
                                                   placeholder="mot1, mot2, mot3...")
                 if mots_perso_simple:
                     mots_base_simple.extend([m.strip() for m in mots_perso_simple.split(',') if m.strip()])
@@ -418,52 +417,65 @@ with col_simple:
             col_mots_simple = "#8B4513"
             mots_base_simple = []
 
-# COLONNE 2 : Texte coloré
-with col_colore:
-    st.markdown("### 🎨 Texte coloré")
-    creer_texte_colore = st.toggle("Activer", key="toggle_colore", value=True)
+st.markdown("---")
+
+# OPTION 2 : Texte coloré
+st.markdown("### 🎨 Texte avec code couleur complet")
+creer_texte_colore = st.toggle("Activer le document avec code couleur complet", key="toggle_colore", value=True)
+
+if creer_texte_colore:
+    st.markdown("**Personnalisation des couleurs :**")
     
-    if creer_texte_colore:
-        st.markdown("**Couleurs :**")
-        col_voyelles = st.color_picker("Voyelles", "#FF0000", key="col_voy")
-        col_consonnes = st.color_picker("Consonnes", "#0000FF", key="col_cons")
-        col_graphemes = st.color_picker("Graphèmes", "#008000", key="col_graph")
-        col_muettes = st.color_picker("Muettes", "#808080", key="col_muet")
-        col_mots_outils = st.color_picker("Mots-outils", "#8B4513", key="col_mots")
-        
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        col_voyelles = st.color_picker("🔴 Voyelles", "#FF0000", key="col_voy")
+        col_consonnes = st.color_picker("🔵 Consonnes", "#0000FF", key="col_cons")
+    with col2:
+        col_graphemes = st.color_picker("🟢 Graphèmes", "#008000", key="col_graph")
+        col_muettes = st.color_picker("⚫ Muettes", "#808080", key="col_muet")
+    with col3:
+        col_mots_outils = st.color_picker("🟤 Mots-outils", "#8B4513", key="col_mots")
         activer_muettes = st.checkbox("Détecter lettres muettes", True, key="muettes")
-        
-        st.markdown("**Mots-outils :**")
-        manuel_colore = st.selectbox("Liste", list(LISTES_MANUELS.keys()), key="manuel_colore")
+    
+    st.markdown("**Mots-outils :**")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        manuel_colore = st.selectbox("Liste prédéfinie", list(LISTES_MANUELS.keys()), key="manuel_colore")
+    with col2:
         mots_base_colore = LISTES_MANUELS[manuel_colore].copy()
-        
         if manuel_colore == 'Ma liste perso':
-            mots_perso_colore = st.text_area("Vos mots", "", key="perso_colore",
-                                             placeholder="mot1, mot2, mot3...")
+            mots_perso_colore = st.text_area("Vos mots (séparés par des virgules)", "", key="perso_colore",
+                                             placeholder="mot1, mot2, mot3...", height=60)
             if mots_perso_colore:
                 mots_base_colore.extend([m.strip() for m in mots_perso_colore.split(',') if m.strip()])
-        
-        couleurs_config = {
-            'voyelles': col_voyelles,
-            'consonnes': col_consonnes,
-            'graphemes': col_graphemes,
-            'muettes': col_muettes,
-            'mots_outils': col_mots_outils
-        }
-
-# COLONNE 3 : Graphèmes ciblés
-with col_cible:
-    st.markdown("### 🎯 Graphèmes ciblés")
-    creer_doc_cible = st.toggle("Activer", key="toggle_cible", value=False)
     
-    if creer_doc_cible:
-        st.markdown("**Options :**")
+    couleurs_config = {
+        'voyelles': col_voyelles,
+        'consonnes': col_consonnes,
+        'graphemes': col_graphemes,
+        'muettes': col_muettes,
+        'mots_outils': col_mots_outils
+    }
+
+st.markdown("---")
+
+# OPTION 3 : Graphèmes ciblés
+st.markdown("### 🎯 Document avec graphèmes ciblés")
+creer_doc_cible = st.toggle("Activer le document avec graphèmes ciblés", key="toggle_cible", value=False)
+
+if creer_doc_cible:
+    st.success("✨ Un document avec uniquement le(s) son(s) travaillé(s) en couleur sera créé !")
+    
+    col1, col2 = st.columns([2, 1])
+    with col1:
         graphemes_input = st.text_input(
-            "Graphèmes",
-            placeholder="ou, ch, ain",
-            key="graphemes"
+            "🔤 Graphèmes à cibler (séparés par des virgules)",
+            placeholder="Exemple: ou, ch, ain",
+            key="graphemes",
+            help="Ces graphèmes seront colorés, le reste du texte sera en noir"
         )
-        couleur_cible = st.color_picker("Couleur", "#069494", key="col_cible")
+    with col2:
+        couleur_cible = st.color_picker("🎨 Couleur", "#069494", key="col_cible")
 
 st.markdown("---")
 
