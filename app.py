@@ -310,7 +310,6 @@ def generer_preview_html(texte_traite, couleurs_config, police):
 
 # Interface Streamlit
 st.title("📚 Lecture Colorée pour CP")
-st.markdown("**Application d'adaptation de textes pour enfants dys et TSA**")
 st.markdown("*Pour les enseignants et les parents*")
 
 # Description
