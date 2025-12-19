@@ -6,6 +6,17 @@ from docx.shared import RGBColor, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-GKY6GERLTX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-GKY6GERLTX');
+</script>
+
+
 # Configuration de base
 st.set_page_config(page_title="Lecture Colorée CP", page_icon="📚", layout="wide")
 
