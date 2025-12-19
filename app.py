@@ -1,4 +1,10 @@
-
+import streamlit as st
+from PIL import Image, ImageOps, ImageFilter
+import pytesseract
+from docx import Document
+from docx.shared import RGBColor, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+import io
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-GKY6GERLTX"></script>
 <script>
@@ -8,15 +14,6 @@
 
   gtag('config', 'G-GKY6GERLTX');
 </script>
-
-import streamlit as st
-from PIL import Image, ImageOps, ImageFilter
-import pytesseract
-from docx import Document
-from docx.shared import RGBColor, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-import io
-
 # Configuration de base
 st.set_page_config(page_title="Lecture Colorée CP", page_icon="📚", layout="wide")
 
