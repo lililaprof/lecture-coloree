@@ -5,14 +5,12 @@ from docx import Document
 from docx.shared import RGBColor, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
-import streamlit.components.v1 as components
 
-# Configuration de base (DOIT ÊTRE EN PREMIER !)
+# Configuration de base
 st.set_page_config(page_title="Lecture Colorée CP", page_icon="📚", layout="wide")
 
-# Google Analytics (APRÈS set_page_config)
-ga_code = """
-<!-- Google tag (gtag.js) -->
+# Google Analytics - injection dans le head
+st.markdown("""
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-GKY6GERLTX"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -20,8 +18,7 @@ ga_code = """
   gtag('js', new Date());
   gtag('config', 'G-GKY6GERLTX');
 </script>
-"""
-components.html(ga_code, height=0)
+""", unsafe_allow_html=True)
 
 # Définitions globales
 sons_complexes = [
