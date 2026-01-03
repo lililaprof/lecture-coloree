@@ -5,12 +5,15 @@ from docx import Document
 from docx.shared import RGBColor, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
+import re
 
 # Configuration de base
 st.set_page_config(page_title="Lecture Colorée CP", page_icon="📚", layout="wide")
 
-# Google Analytics - injection dans le head
-st.markdown("""
+# Google Analytics
+import streamlit.components.v1 as components
+components.html("""
+<!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-GKY6GERLTX"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -18,7 +21,7 @@ st.markdown("""
   gtag('js', new Date());
   gtag('config', 'G-GKY6GERLTX');
 </script>
-""", unsafe_allow_html=True)
+""", height=0)
 
 # Définitions globales
 sons_complexes = [
@@ -32,7 +35,6 @@ sons_nasals = ['an', 'am', 'en', 'em', 'on', 'om', 'in', 'im', 'un', 'um', 'yn',
 voyelles = 'aeiouyàâäéèêëïîôùûüÿæœAEIOUYÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ'
 lettres_muettes_fin = ['s', 't', 'd', 'p', 'x', 'z']
 
-# Listes de mots-outils par manuel
 LISTES_MANUELS = {
     'Ma liste perso': [],
     'Taoki': ['est', 'et', 'un', 'une', 'le', 'la', 'les', 'de', 'il', 'elle', 'dans', 'sur', 'avec'],
@@ -45,28 +47,34 @@ LISTES_MANUELS = {
 
 POLICES = ['Arial', 'Comic Sans MS', 'OpenDyslexic', 'Quicksand Book', 'Belle Allure', 'Helvetica']
 
-# Fonctions utilitaires
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return RGBColor(*tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)))
 
 def pretraiter_image(image, qualite_ocr):
-    """Prépare l'image pour une meilleure lecture par l'OCR"""
     img = image.copy()
     img = ImageOps.grayscale(img)
-    
     if qualite_ocr == "Maximale":
         img = img.filter(ImageFilter.MedianFilter(size=3))
         img = img.point(lambda p: 255 if p > 180 else 0)
-    
     return img
 
+def nettoyer_texte_ocr(texte):
+    texte = re.sub(r'\s+[•|]\s+', ' ', texte)
+    texte = re.sub(r'\s+\d+\s+(?=[a-z]{1,2}\s)', ' ', texte)
+    texte = re.sub(r'\s+[a-zA-Z]{1,2}\s+(?=[a-z])', ' ', texte)
+    texte = re.sub(r'\s+', ' ', texte)
+    lignes = texte.split('\n')
+    lignes_propres = [l for l in lignes if l.strip() and not l.strip().startswith(('•', '|', '-', '=', '_'))]
+    return '\n'.join(lignes_propres).strip()
+
 def detecter_lettre_muette(mot, position):
+    mot_lower = mot.lower()
     if position == len(mot) - 1:
-        lettre = mot[position].lower()
-        if lettre in lettres_muettes_fin:
+        if mot[position].lower() in lettres_muettes_fin:
             return True
-        if len(mot) >= 3 and mot[-3:].lower() == 'ent':
+    if len(mot) >= 3 and mot_lower.endswith('ent'):
+        if position >= len(mot) - 3:
             return True
     if position == 0 and mot[position].lower() == 'h':
         return True
@@ -126,10 +134,8 @@ def ajouter_espaces_entre_mots(texte):
     return resultat
 
 def mettre_majuscules_phrases(texte):
-    """Met une majuscule au début de chaque phrase"""
     resultat = []
     debut_phrase = True
-    
     for char in texte:
         if debut_phrase and char.isalpha():
             resultat.append(char.upper())
@@ -138,168 +144,125 @@ def mettre_majuscules_phrases(texte):
             resultat.append(char)
             if char in '.!?':
                 debut_phrase = True
-    
     return ''.join(resultat)
 
 def colorier_texte(texte, mots_outils, couleurs_config, activer_muettes=True):
     resultat_word = []
-    mots_outils_lower = [mot.lower() for mot in mots_outils]
-    mots_outils_upper = [mot.upper() for mot in mots_outils]
-    tous_mots_outils = mots_outils + mots_outils_lower + mots_outils_upper
-    
+    tous_mots = set(mots_outils + [m.lower() for m in mots_outils] + [m.upper() for m in mots_outils])
     i = 0
     while i < len(texte):
         char = texte[i]
-        
         if not char.isalpha():
             resultat_word.append((char, None))
             i += 1
             continue
-        
         mot_complet, debut_mot, fin_mot = extraire_mot_complet(texte, i)
         position_dans_mot = i - debut_mot
-        
-        if mot_complet in tous_mots_outils:
+        if mot_complet in tous_mots:
             for c in mot_complet:
                 resultat_word.append((c, 'mots_outils'))
             i = fin_mot
             continue
-        
         if activer_muettes and detecter_lettre_muette(mot_complet, position_dans_mot):
             resultat_word.append((char, 'muettes'))
             i += 1
             continue
-        
         trouve = False
         for son in sons_complexes:
             if texte[i:i+len(son)].lower() == son:
-                segment = texte[i:i+len(son)]
-                for c in segment:
+                for c in texte[i:i+len(son)]:
                     resultat_word.append((c, 'graphemes'))
                 i += len(son)
                 trouve = True
                 break
-        
         if not trouve:
             for son in sons_nasals:
                 if texte[i:i+len(son)].lower() == son:
                     if est_son_nasal_valide(texte, i, son):
-                        segment = texte[i:i+len(son)]
-                        for c in segment:
+                        for c in texte[i:i+len(son)]:
                             resultat_word.append((c, 'graphemes'))
                         i += len(son)
                         trouve = True
                         break
-        
         if not trouve:
-            if char.lower() in voyelles:
-                resultat_word.append((char, 'voyelles'))
-            else:
-                resultat_word.append((char, 'consonnes'))
+            resultat_word.append((char, 'voyelles' if char.lower() in voyelles else 'consonnes'))
             i += 1
-    
     return resultat_word
 
 def colorier_texte_simple_options(texte, mots_outils, col_graphemes, col_mots_outils, 
                                    activer_graphemes=False, activer_mots_outils=False):
-    """Colorie uniquement graphèmes et/ou mots-outils selon options"""
     resultat_word = []
-    mots_outils_lower = [mot.lower() for mot in mots_outils]
-    mots_outils_upper = [mot.upper() for mot in mots_outils]
-    tous_mots_outils = mots_outils + mots_outils_lower + mots_outils_upper
-    
+    tous_mots = set(mots_outils + [m.lower() for m in mots_outils] + [m.upper() for m in mots_outils])
     i = 0
     while i < len(texte):
         char = texte[i]
-        
         if not char.isalpha():
             resultat_word.append((char, None))
             i += 1
             continue
-        
         mot_complet, debut_mot, fin_mot = extraire_mot_complet(texte, i)
-        
-        if activer_mots_outils and mot_complet in tous_mots_outils:
+        if activer_mots_outils and mot_complet in tous_mots:
             for c in mot_complet:
                 resultat_word.append((c, 'mots_outils'))
             i = fin_mot
             continue
-        
         trouve = False
         if activer_graphemes:
             for son in sons_complexes:
                 if texte[i:i+len(son)].lower() == son:
-                    segment = texte[i:i+len(son)]
-                    for c in segment:
+                    for c in texte[i:i+len(son)]:
                         resultat_word.append((c, 'graphemes'))
                     i += len(son)
                     trouve = True
                     break
-            
             if not trouve:
                 for son in sons_nasals:
                     if texte[i:i+len(son)].lower() == son:
                         if est_son_nasal_valide(texte, i, son):
-                            segment = texte[i:i+len(son)]
-                            for c in segment:
+                            for c in texte[i:i+len(son)]:
                                 resultat_word.append((c, 'graphemes'))
                             i += len(son)
                             trouve = True
                             break
-        
         if not trouve:
             resultat_word.append((char, None))
             i += 1
-    
     return resultat_word
 
 def colorier_graphemes_cibles(texte, graphemes_cibles, couleur_cible):
     resultat_word = []
     graphemes_lower = [g.lower() for g in graphemes_cibles]
-    
     i = 0
     while i < len(texte):
         trouve = False
         for grapheme in graphemes_lower:
             if texte[i:i+len(grapheme)].lower() == grapheme:
-                segment = texte[i:i+len(grapheme)]
-                for c in segment:
+                for c in texte[i:i+len(grapheme)]:
                     resultat_word.append((c, 'cible'))
                 i += len(grapheme)
                 trouve = True
                 break
-        
         if not trouve:
             resultat_word.append((texte[i], 'black'))
             i += 1
-    
     return resultat_word
 
 def creer_word(texte_traite, police, couleurs_config, casse, taille_pt=25):
     doc = Document()
-    
-    couleurs_rgb = {}
-    for key, hex_val in couleurs_config.items():
-        couleurs_rgb[key] = hex_to_rgb(hex_val)
-    
-    titre = f'{casse.upper()}'
-    titre_para = doc.add_heading(titre, level=1)
+    couleurs_rgb = {k: hex_to_rgb(v) for k, v in couleurs_config.items()}
+    titre_para = doc.add_heading(casse.upper(), level=1)
     titre_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
     para = doc.add_paragraph()
     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    
     for char, couleur in texte_traite:
         run = para.add_run(char)
         run.font.size = Pt(taille_pt)
         run.font.name = police
         if couleur and couleur in couleurs_rgb:
             run.font.color.rgb = couleurs_rgb[couleur]
-    
     return doc
 
 def generer_preview_html(texte_traite, couleurs_config, police):
-    """Génère un aperçu HTML du texte coloré"""
     mapping = {
         'voyelles': couleurs_config.get('voyelles', '#FF0000'),
         'consonnes': couleurs_config.get('consonnes', '#0000FF'),
@@ -310,7 +273,6 @@ def generer_preview_html(texte_traite, couleurs_config, police):
         'black': '#000000',
         None: '#000000'
     }
-    
     html = f"<div style='font-family:{police}; font-size:18px; line-height:1.8; padding:15px; background:#f9f9f9; border-radius:10px;'>"
     for char, couleur in texte_traite:
         color = mapping.get(couleur, '#000000')
@@ -319,298 +281,194 @@ def generer_preview_html(texte_traite, couleurs_config, police):
     html += "</div>"
     return html
 
-# Interface Streamlit
+# Interface
 st.title("📚 Lecture Colorée pour CP")
+st.markdown("**Application d'adaptation de textes pour enfants dys et TSA**")
 st.markdown("*Pour les enseignants et les parents*")
 
-# Description
 st.info("""
 📖 **Comment ça marche ?**
-1. Uploadez une photo/scan OU tapez/collez votre texte
-2. Choisissez les documents à générer (texte simple, coloré, graphèmes ciblés)
-3. Personnalisez les options pour chaque type de document
-4. Téléchargez vos documents Word !
+1. Uploadez une ou plusieurs photos OU tapez/collez votre texte
+2. Vérifiez et corrigez le texte extrait si besoin
+3. Choisissez les documents à générer
+4. Téléchargez !
 
 🎨 **Code couleur :** 🔴 Voyelles • 🔵 Consonnes • 🟢 Graphèmes complexes • ⚫ Lettres muettes • 🟤 Mots-outils
 """)
 
 with st.expander("ℹ️ En savoir plus"):
     st.markdown("""
-    ### Fonctionnalités
-    - ✅ OCR (lecture d'image) ou saisie manuelle
-    - ✅ Code couleur basé sur la phonétique
-    - ✅ Listes de mots-outils par manuel
-    - ✅ 3 types de documents au choix
-    - ✅ Prévisualisation avant téléchargement
+    ### Nouveautés
+    - ✅ Upload multiple d'images
+    - ✅ Zone de correction du texte
+    - ✅ Nettoyage automatique
+    - ✅ Détection "ent" final améliorée
     
     *Application gratuite et open source* 💚
     """)
 
 st.markdown("---")
 
-# Sidebar - Paramètres généraux
+# Sidebar
 with st.sidebar:
-    st.header("⚙️ Paramètres généraux")
-    
+    st.header("⚙️ Paramètres")
     police = st.selectbox("📝 Police", POLICES, index=0)
     taille_police = st.slider("📏 Taille (pt)", 12, 40, 25, 1)
     casse = st.radio("📝 Casse", ['Minuscules', 'Majuscules'], horizontal=True)
-    
     st.markdown("---")
-    st.subheader("🔍 Qualité OCR")
-    
-    qualite_ocr = st.select_slider(
-        "Qualité",
-        ["Standard", "Bonne", "Maximale"],
-        "Bonne",
-        help="Standard = photo nette | Bonne = recommandé | Maximale = photo floue"
-    )
+    qualite_ocr = st.select_slider("🔍 Qualité OCR", ["Standard", "Bonne", "Maximale"], "Bonne")
 
-# Zone input (image ou texte)
+# Zone input
 st.header("📥 Votre texte")
-
-tab1, tab2 = st.tabs(["📤 Upload d'image", "✍️ Saisie manuelle"])
-
-texte_source = None
-source_type = None
+tab1, tab2 = st.tabs(["📤 Upload d'image(s)", "✍️ Saisie manuelle"])
 
 with tab1:
-    uploaded_file = st.file_uploader("Image (PNG/JPG)", type=['png', 'jpg', 'jpeg'])
-    if uploaded_file:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Image uploadée", use_column_width=True)
-        source_type = "image"
+    uploaded_files = st.file_uploader("Image(s) - Plusieurs possibles !", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
+    if uploaded_files:
+        st.info(f"✅ {len(uploaded_files)} image(s)")
+        cols = st.columns(min(len(uploaded_files), 4))
+        for idx, file in enumerate(uploaded_files):
+            with cols[idx % 4]:
+                st.image(Image.open(file), caption=f"Image {idx+1}", use_column_width=True)
 
 with tab2:
-    texte_saisi = st.text_area(
-        "Tapez ou collez votre texte ici",
-        height=200,
-        placeholder="Exemple: Le chat mange une souris. Il est content."
-    )
-    if texte_saisi:
-        source_type = "texte"
-        texte_source = texte_saisi
+    texte_saisi = st.text_area("Tapez ou collez votre texte", height=200)
 
-st.markdown("---")
+# Extraction OCR
+if uploaded_files:
+    if st.button("🔍 Extraire le texte des images", type="primary"):
+        with st.spinner("📖 Extraction..."):
+            textes = []
+            for file in uploaded_files:
+                img = Image.open(file)
+                img_pre = pretraiter_image(img, qualite_ocr)
+                config = '--psm 6 -l fra' if qualite_ocr != "Maximale" else '--psm 3 -l fra'
+                texte = pytesseract.image_to_string(img_pre, config=config)
+                textes.append(nettoyer_texte_ocr(texte))
+            st.session_state['texte_extrait'] = "\n\n".join(textes)
+            st.success(f"✅ Texte extrait de {len(uploaded_files)} image(s) !")
 
-# Options de génération empilées verticalement
-st.header("📄 Documents à générer")
-st.markdown("*Activez les documents que vous souhaitez créer*")
-
-# OPTION 1 : Texte coloré (en premier maintenant)
-st.markdown("### 🎨 Texte avec code couleur complet")
-creer_texte_colore = st.toggle("Activer le document avec code couleur complet", key="toggle_colore", value=True)
-
-if creer_texte_colore:
-    st.info("📖 Code couleur pour aider à la lecture : voyelles, consonnes, graphèmes complexes, lettres muettes et mots-outils sont colorés différemment.")
+# Zone éditable
+if 'texte_extrait' in st.session_state or texte_saisi:
+    st.markdown("---")
+    st.header("✏️ Texte à traiter")
+    texte_init = st.session_state.get('texte_extrait', texte_saisi)
+    texte_editable = st.text_area("Vérifiez et corrigez", value=texte_init, height=300)
     
-    st.markdown("**Personnalisation des couleurs :**")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        col_voyelles = st.color_picker("🔴 Voyelles", "#FF0000", key="col_voy")
-        col_consonnes = st.color_picker("🔵 Consonnes", "#0000FF", key="col_cons")
-    with col2:
-        col_graphemes = st.color_picker("🟢 Graphèmes complexes", "#008000", key="col_graph")
-        col_muettes = st.color_picker("⚫ Lettres muettes", "#808080", key="col_muet")
-    with col3:
-        col_mots_outils = st.color_picker("🟤 Mots-outils", "#8B4513", key="col_mots")
-        activer_muettes = st.checkbox("Détecter lettres muettes", True, key="muettes")
-    
-    st.markdown("**Mots-outils :**")
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        manuel_colore = st.selectbox("Liste prédéfinie", list(LISTES_MANUELS.keys()), key="manuel_colore")
-    with col2:
-        mots_base_colore = LISTES_MANUELS[manuel_colore].copy()
-        if manuel_colore == 'Ma liste perso':
-            mots_perso_colore = st.text_area("Vos mots (séparés par des virgules)", "", key="perso_colore",
-                                             placeholder="mot1, mot2, mot3...", height=60)
-            if mots_perso_colore:
-                mots_base_colore.extend([m.strip() for m in mots_perso_colore.split(',') if m.strip()])
-    
-    couleurs_config = {
-        'voyelles': col_voyelles,
-        'consonnes': col_consonnes,
-        'graphemes': col_graphemes,
-        'muettes': col_muettes,
-        'mots_outils': col_mots_outils
-    }
-
-st.markdown("---")
-
-# OPTION 2 : Texte simple
-st.markdown("### 📃 Texte simple")
-creer_texte_simple = st.toggle("Activer le document texte simple", key="toggle_simple", value=False)
-
-if creer_texte_simple:
-    st.info("📝 Texte en noir et blanc avec possibilité de colorer uniquement les graphèmes complexes et/ou les mots-outils.")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        simple_graphemes = st.checkbox("Colorer les graphèmes complexes (ou, ch, ain...)", key="simple_graph")
-        if simple_graphemes:
-            col_graphemes_simple = st.color_picker("Couleur des graphèmes complexes", "#008000", key="col_graph_simple")
-        else:
-            col_graphemes_simple = "#008000"
-    
-    with col2:
-        simple_mots = st.checkbox("Colorer les mots-outils", key="simple_mots")
-        if simple_mots:
-            col_mots_simple = st.color_picker("Couleur des mots-outils", "#8B4513", key="col_mots_simple")
-            manuel_simple = st.selectbox("Liste de mots-outils", list(LISTES_MANUELS.keys()), key="manuel_simple")
-            mots_base_simple = LISTES_MANUELS[manuel_simple].copy()
-            
-            if manuel_simple == 'Ma liste perso':
-                mots_perso_simple = st.text_area("Vos mots (séparés par des virgules)", "", key="perso_simple", 
-                                                  placeholder="mot1, mot2, mot3...")
-                if mots_perso_simple:
-                    mots_base_simple.extend([m.strip() for m in mots_perso_simple.split(',') if m.strip()])
-        else:
-            col_mots_simple = "#8B4513"
-            mots_base_simple = []
-
-st.markdown("---")
-
-# OPTION 3 : Graphèmes ciblés
-st.markdown("### 🎯 Document avec graphèmes ciblés")
-creer_doc_cible = st.toggle("Activer le document avec graphèmes ciblés", key="toggle_cible", value=False)
-
-if creer_doc_cible:
-    st.info("🎯 Parfait pour travailler un son spécifique : seuls les graphèmes choisis sont colorés, le reste du texte est en noir.")
-    
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        graphemes_input = st.text_input(
-            "🔤 Graphèmes à cibler (séparés par des virgules)",
-            placeholder="Exemple: ou, ch, ain",
-            key="graphemes",
-            help="Ces graphèmes seront colorés, le reste du texte sera en noir"
-        )
-    with col2:
-        couleur_cible = st.color_picker("🎨 Couleur", "#069494", key="col_cible")
-
-st.markdown("---")
-
-# Bouton de génération
-if st.button("🚀 GÉNÉRER LES DOCUMENTS", type="primary", use_container_width=True):
-    if source_type is None:
-        st.error("❌ Veuillez uploader une image OU saisir un texte !")
-    elif not (creer_texte_simple or creer_texte_colore or creer_doc_cible):
-        st.warning("⚠️ Activez au moins un type de document !")
-    else:
-        with st.spinner("⏳ Traitement en cours..."):
-            try:
-                # Extraction du texte
-                if source_type == "image":
-                    image_pretrait = pretraiter_image(image, qualite_ocr)
-                    if qualite_ocr == "Standard":
-                        config_ocr = '--psm 6 -l fra'
-                    elif qualite_ocr == "Bonne":
-                        config_ocr = '--psm 6 -l fra'
-                    else:
-                        config_ocr = '--psm 3 -l fra'
-                    texte_brut = pytesseract.image_to_string(image_pretrait, config=config_ocr)
+    if texte_editable:
+        st.markdown("---")
+        st.header("📄 Documents à générer")
+        
+        # Option 1
+        st.markdown("### 🎨 Texte coloré")
+        creer_texte_colore = st.toggle("Activer", key="colore", value=True)
+        if creer_texte_colore:
+            st.info("📖 Code couleur complet")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                col_voy = st.color_picker("🔴 Voyelles", "#FF0000")
+                col_cons = st.color_picker("🔵 Consonnes", "#0000FF")
+            with col2:
+                col_graph = st.color_picker("🟢 Graphèmes", "#008000")
+                col_muet = st.color_picker("⚫ Muettes", "#808080")
+            with col3:
+                col_mots = st.color_picker("🟤 Mots-outils", "#8B4513")
+                activer_muettes = st.checkbox("Détecter muettes", True)
+            manuel = st.selectbox("Liste mots-outils", list(LISTES_MANUELS.keys()))
+            mots_base = LISTES_MANUELS[manuel].copy()
+            if manuel == 'Ma liste perso':
+                perso = st.text_area("Vos mots", "", height=60)
+                if perso:
+                    mots_base.extend([m.strip() for m in perso.split(',') if m.strip()])
+            couleurs_config = {'voyelles': col_voy, 'consonnes': col_cons, 'graphemes': col_graph, 'muettes': col_muet, 'mots_outils': col_mots}
+        
+        st.markdown("---")
+        
+        # Option 2
+        st.markdown("### 📃 Texte simple")
+        creer_simple = st.toggle("Activer", key="simple")
+        if creer_simple:
+            st.info("📝 Noir/blanc + options")
+            col1, col2 = st.columns(2)
+            with col1:
+                simple_graph = st.checkbox("Graphèmes")
+                col_graph_simple = st.color_picker("Couleur", "#008000", key="cgs") if simple_graph else "#008000"
+            with col2:
+                simple_mots = st.checkbox("Mots-outils")
+                if simple_mots:
+                    col_mots_simple = st.color_picker("Couleur", "#8B4513", key="cms")
+                    manuel_s = st.selectbox("Liste", list(LISTES_MANUELS.keys()), key="ms")
+                    mots_s = LISTES_MANUELS[manuel_s].copy()
                 else:
-                    texte_brut = texte_source
-                
-                texte_brut = remplacer_separateurs(texte_brut)
-                texte_brut = ajouter_espaces_entre_mots(texte_brut)
-                
-                if casse == 'Minuscules':
-                    texte_final = texte_brut.lower()
-                    texte_final = mettre_majuscules_phrases(texte_final)
-                else:
-                    texte_final = texte_brut.upper()
-                
-                st.success("✅ Texte traité !")
-                
-                with st.expander("👀 Texte extrait"):
-                    st.text(texte_brut)
-                
-                # Document 1 : Texte simple
-                if creer_texte_simple:
-                    st.info("📄 Génération texte simple...")
-                    
-                    couleurs_simple = {
-                        'graphemes': col_graphemes_simple,
-                        'mots_outils': col_mots_simple
-                    }
-                    
-                    texte_simple = colorier_texte_simple_options(
-                        texte_final, mots_base_simple, col_graphemes_simple, col_mots_simple,
-                        simple_graphemes, simple_mots
-                    )
-                    
-                    st.subheader("👁️ Aperçu - Texte simple")
-                    preview = generer_preview_html(texte_simple, couleurs_simple, police)
-                    st.markdown(preview, unsafe_allow_html=True)
-                    
-                    doc_simple = creer_word(texte_simple, police, couleurs_simple, casse, taille_police)
-                    buffer = io.BytesIO()
-                    doc_simple.save(buffer)
-                    buffer.seek(0)
-                    
-                    st.download_button(
-                        "📥 Télécharger - Texte simple",
-                        buffer,
-                        f"texte_simple_{casse.lower()}.docx",
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    )
-                
-                # Document 2 : Texte coloré
-                if creer_texte_colore:
-                    st.info("📄 Génération texte coloré...")
-                    
-                    texte_colorie = colorier_texte(texte_final, mots_base_colore, couleurs_config, activer_muettes)
-                    
-                    st.subheader("👁️ Aperçu - Texte coloré")
-                    preview = generer_preview_html(texte_colorie, couleurs_config, police)
-                    st.markdown(preview, unsafe_allow_html=True)
-                    
-                    doc_colore = creer_word(texte_colorie, police, couleurs_config, casse, taille_police)
-                    buffer = io.BytesIO()
-                    doc_colore.save(buffer)
-                    buffer.seek(0)
-                    
-                    st.download_button(
-                        "📥 Télécharger - Texte coloré",
-                        buffer,
-                        f"texte_colore_{casse.lower()}.docx",
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    )
-                
-                # Document 3 : Graphèmes ciblés
-                if creer_doc_cible and graphemes_input:
-                    st.info("📄 Génération graphèmes ciblés...")
-                    
-                    graphemes_list = [g.strip() for g in graphemes_input.split(',') if g.strip()]
-                    
-                    if graphemes_list:
-                        couleurs_cible = {'cible': couleur_cible, 'black': '#000000'}
-                        texte_cible = colorier_graphemes_cibles(texte_final, graphemes_list, couleur_cible)
+                    col_mots_simple = "#8B4513"
+                    mots_s = []
+        
+        st.markdown("---")
+        
+        # Option 3
+        st.markdown("### 🎯 Graphèmes ciblés")
+        creer_cible = st.toggle("Activer", key="cible")
+        if creer_cible:
+            st.info("🎯 Son spécifique en couleur")
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                graph_input = st.text_input("Graphèmes", placeholder="ou, ch, ain")
+            with col2:
+                col_cible = st.color_picker("Couleur", "#069494")
+        
+        st.markdown("---")
+        
+        # Génération
+        if st.button("🚀 GÉNÉRER", type="primary", use_container_width=True):
+            if not (creer_simple or creer_texte_colore or creer_cible):
+                st.warning("⚠️ Activez au moins un document !")
+            else:
+                with st.spinner("⏳ Génération..."):
+                    try:
+                        texte = remplacer_separateurs(texte_editable)
+                        texte = ajouter_espaces_entre_mots(texte)
+                        texte = texte.lower() if casse == 'Minuscules' else texte.upper()
+                        if casse == 'Minuscules':
+                            texte = mettre_majuscules_phrases(texte)
                         
-                        st.subheader("👁️ Aperçu - Graphèmes ciblés")
-                        preview = generer_preview_html(texte_cible, couleurs_cible, police)
-                        st.markdown(preview, unsafe_allow_html=True)
+                        if creer_simple:
+                            st.info("📄 Texte simple...")
+                            t_simple = colorier_texte_simple_options(texte, mots_s, col_graph_simple, col_mots_simple, simple_graph, simple_mots)
+                            st.subheader("👁️ Aperçu")
+                            st.markdown(generer_preview_html(t_simple, {'graphemes': col_graph_simple, 'mots_outils': col_mots_simple}, police), unsafe_allow_html=True)
+                            doc = creer_word(t_simple, police, {'graphemes': col_graph_simple, 'mots_outils': col_mots_simple}, casse, taille_police)
+                            buf = io.BytesIO()
+                            doc.save(buf)
+                            buf.seek(0)
+                            st.download_button("📥 Télécharger", buf, f"simple_{casse.lower()}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
                         
-                        doc_cible = creer_word(texte_cible, police, couleurs_cible, casse, taille_police)
-                        buffer = io.BytesIO()
-                        doc_cible.save(buffer)
-                        buffer.seek(0)
+                        if creer_texte_colore:
+                            st.info("📄 Texte coloré...")
+                            t_col = colorier_texte(texte, mots_base, couleurs_config, activer_muettes)
+                            st.subheader("👁️ Aperçu")
+                            st.markdown(generer_preview_html(t_col, couleurs_config, police), unsafe_allow_html=True)
+                            doc = creer_word(t_col, police, couleurs_config, casse, taille_police)
+                            buf = io.BytesIO()
+                            doc.save(buf)
+                            buf.seek(0)
+                            st.download_button("📥 Télécharger", buf, f"colore_{casse.lower()}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
                         
-                        st.download_button(
-                            "📥 Télécharger - Graphèmes ciblés",
-                            buffer,
-                            f"texte_graphemes_{casse.lower()}.docx",
-                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        )
-                
-                st.success("🎉 Tous les documents générés !")
-                
-            except Exception as e:
-                st.error(f"❌ Erreur : {str(e)}")
+                        if creer_cible and graph_input:
+                            st.info("📄 Graphèmes ciblés...")
+                            graphs = [g.strip() for g in graph_input.split(',') if g.strip()]
+                            if graphs:
+                                t_cib = colorier_graphemes_cibles(texte, graphs, col_cible)
+                                st.subheader("👁️ Aperçu")
+                                st.markdown(generer_preview_html(t_cib, {'cible': col_cible, 'black': '#000000'}, police), unsafe_allow_html=True)
+                                doc = creer_word(t_cib, police, {'cible': col_cible, 'black': '#000000'}, casse, taille_police)
+                                buf = io.BytesIO()
+                                doc.save(buf)
+                                buf.seek(0)
+                                st.download_button("📥 Télécharger", buf, f"cible_{casse.lower()}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                        
+                        st.success("🎉 Terminé !")
+                    except Exception as e:
+                        st.error(f"❌ Erreur : {str(e)}")
 
 st.markdown("---")
-st.markdown("*Créé avec ❤️ pour aider les enseignants et les élèves - Projet open source*")
+st.markdown("*Créé avec ❤️ - Projet open source*")
