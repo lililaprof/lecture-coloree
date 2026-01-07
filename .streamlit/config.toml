@@ -1,0 +1,36 @@
+[client]
+showErrorDetails = true
+
+[theme]
+primaryColor = "#FF6B6B"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans serif"
+
+[logger]
+level = "info"
+
+[client.toolbarMode]
+mode = "developer"
+
+[html]
+unsafe_allow_html = true
+
+# Google Analytics injection in HTML head
+[client.markdownLinkTarget]
+markdownLinkTarget = "_blank"
+
+# Custom HTML head content for Google Analytics
+[html]
+customHeadHtml = """
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=YOUR_GA_MEASUREMENT_ID"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'YOUR_GA_MEASUREMENT_ID');
+</script>
+<!-- End Google Analytics -->
+"""
