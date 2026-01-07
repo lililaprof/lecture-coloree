@@ -1,6 +1,1 @@
-streamlit
-pillow
-pytesseract
-opencv-python-headless
-python-docx
-numpy
+streamlit-gtag
