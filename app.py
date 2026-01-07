@@ -10,18 +10,23 @@ import re
 # Configuration de base
 st.set_page_config(page_title="Lecture Colorée CP", page_icon="📚", layout="wide")
 
-# Google Analytics
-import streamlit.components.v1 as components
-components.html("""
+# Google Analytics - VERSION CORRIGÉE
+import streamlit. components.v1 as components
+
+# Injecter Google Analytics dans le <head> de la page
+google_analytics_code = """
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-GKY6GERLTX"></script>
 <script>
-  window.dataLayer = window.dataLayer || [];
+  window.dataLayer = window. dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
   gtag('config', 'G-GKY6GERLTX');
 </script>
-""", height=0)
+"""
+
+# Injecter dans le DOM
+components.html(google_analytics_code, height=0, width=100)
 
 # Définitions globales
 sons_complexes = [
