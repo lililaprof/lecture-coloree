@@ -2,4 +2,3 @@ streamlit
 Pillow
 pytesseract
 python-docx
-streamlit-gtag
